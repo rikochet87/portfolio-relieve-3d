@@ -1,0 +1,37 @@
+/* Ajustes de la versión "relieve" sobre style.css */
+:root { --bg: #060a10; --accent: #ffc46b; }
+
+.brand__dot { border-radius: 2px; transform: rotate(45deg); background: #3ddc97; box-shadow: 0 0 14px 3px rgba(61, 220, 151, 0.5); }
+
+/* HUD estilo SIG */
+.hud {
+  position: fixed; right: 24px; bottom: 24px; z-index: 12;
+  display: flex; align-items: center; gap: 18px; padding: 10px 16px;
+  border: 1px solid var(--line); border-radius: 12px; background: var(--glass); backdrop-filter: blur(10px);
+  font-family: ui-monospace, 'SFMono-Regular', Consolas, monospace; font-size: 11.5px; color: var(--ink-2);
+  transition: opacity .4s; pointer-events: none;
+}
+.hud.is-hidden { opacity: 0; }
+.hud__north { color: var(--accent); display: grid; place-items: center; transition: transform .1s linear; }
+.hud__scale { display: flex; flex-direction: column; gap: 4px; min-width: 70px; }
+.hud__scale span { display: block; height: 6px; border: 1.5px solid var(--ink-2); border-top: 0; transition: width .2s; }
+.hud__scale b { font-weight: 500; }
+.hud__coords { min-width: 270px; font-variant-numeric: tabular-nums; white-space: pre; }
+
+/* los filtros quedan a la izquierda para no chocar con el HUD */
+@media (min-width: 761px) {
+  .filters { left: 28px; transform: none; }
+  .hero { bottom: 96px; }
+}
+@media (max-width: 1100px) and (min-width: 761px) {
+  .hud__coords { display: none; }
+}
+
+@media (max-width: 760px) {
+  .hud { bottom: 72px; right: 16px; padding: 6px 10px; gap: 10px; }
+  .hud__coords { display: none; }
+}
+
+@media (max-height: 500px) and (orientation: landscape) {
+  .hud { display: none; }
+}
