@@ -48,3 +48,7 @@ En `src/terrain.js`:
 ## Publicar
 
 `dist/` funciona en cualquier hosting estático: Vercel, Netlify, Cloudflare Pages o GitHub Pages.
+
+En GitHub Pages se publica solo: `.github/workflows/pages.yml` compila y sube `dist/` en cada push a `main`. En **Settings → Pages**, la fuente tiene que ser **GitHub Actions** (no la rama): servida desde la rama, la página queda en blanco porque el código sin compilar no corre en el navegador.
+
+Sitio: https://rikochet87.github.io/portfolio-relieve-3d/
