@@ -201,7 +201,7 @@ const gableRoof = (() => {
 })();
 for (const g of [unitBox, unitCyl, unitCone, hipRoof, gableRoof]) g.deleteAttribute('uv');
 
-export function buildPlaces({ projects, sites, curve, height, water, roadHalf, lang, quality }) {
+export function buildPlaces({ projects, sites, stops, curve, height, water, roadHalf, lang, quality }) {
   const root = new THREE.Group();
   const solids = [];
   const glows = [];
@@ -233,12 +233,13 @@ export function buildPlaces({ projects, sites, curve, height, water, roadHalf, l
   const lengths = curve.getLengths(n * DIV);
   const byId = new Map(projects.map((p) => [p.id, p]));
   const order = [...projects].filter((p) => p.since).sort((a, b) => a.since.localeCompare(b.since));
-  const startLen = lengths[order.length ? sites.findIndex((s) => s.id === order[0].id) * DIV : 0] ?? 0;
+  const startLen = lengths[order.length ? stops[sites.findIndex((s) => s.id === order[0].id)] * DIV : 0] ?? 0;
 
   const signs = []; // carteles que cambian con el idioma
 
-  curve.points.forEach((pt, i) => {
-    const site = sites[i];
+  // stops[k] = índice del punto de control de la ruta que corresponde al lugar k
+  sites.forEach((site, k) => {
+    const i = stops[k];
     const p = byId.get(site.id);
     if (!p) return;
     const len = lengths[i * DIV];

@@ -63,8 +63,8 @@ const smooth = (e0, e1, x) => {
 // Un río que cruza el mapa y un arroyo que desemboca en él. Pasan entre los lugares, así que la
 // ruta los cruza por puentes. w = semiancho del cauce; valley = ancho de la planicie a cada lado.
 const RIVERS = [
-  { w: 1.05, valley: 5, pts: [[-52, -23], [-36, -9], [-24, -4], [-12, 0], [0, 2], [12, 4], [14, 12], [14, 22], [13, 32], [10, 52]] },
-  { w: 0.62, valley: 3, pts: [[46, -42], [34, -28], [26, -17], [16, -8], [6, 3]] },
+  { w: 1.05, valley: 3.6, pts: [[-52, -23], [-36, -9], [-24, -4], [-12, 0], [0, 2], [12, 4], [14, 12], [14, 22], [13, 32], [10, 52]] },
+  { w: 0.62, valley: 2.6, pts: [[46, -42], [34, -28], [26, -17], [16, -8], [6, 3]] },
 ];
 
 // Muestras de cada cauce en una grilla, para saber rápido a qué distancia está un punto.
@@ -78,7 +78,7 @@ function makeRivers() {
       const p = c.getPointAt(i / n);
       const key = `${Math.floor(p.x / CELLR)},${Math.floor(p.z / CELLR)}`;
       if (!grid.has(key)) grid.set(key, []);
-      grid.get(key).push({ x: p.x, z: p.z, ri });
+      grid.get(key).push({ x: p.x, z: p.z, ri, u: i / n });
     }
     return c;
   });
@@ -101,13 +101,14 @@ function makeRivers() {
         }
       }
     }
-    return best ? { d: Math.sqrt(bd), river: RIVERS[best.ri] } : null;
+    return best ? { d: Math.sqrt(bd), river: RIVERS[best.ri], ri: best.ri, u: best.u } : null;
   };
   return { curves, nearest };
 }
 
 // Llanura chaqueña: lomas bajas, ondulaciones chicas, algún bajo con agua y los cauces.
-// channel = false da la altura sin el cauce excavado (sirve para la rasante de la ruta).
+// river: 2 = con valle y cauce; 0 = como si no hubiera río (la rasante de la ruta: cruza el valle
+// a la altura de las orillas, en puente).
 function makeHeight(sites, rivers) {
   // relieve sin explanadas ni cauces
   const base = (x, z) => {
@@ -130,7 +131,7 @@ function makeHeight(sites, rivers) {
     }
     return { x: s.x, z: s.z, h: Math.max(sum / n, WATER + 0.8) };
   });
-  return (x, z, channel = true) => {
+  return (x, z, river = 2) => {
     let h = base(x, z);
     // explanadas primero; el núcleo plano de cada una no lo toca el valle del río
     let core = 0;
@@ -142,12 +143,12 @@ function makeHeight(sites, rivers) {
       }
     }
     const rv = rivers.nearest(x, z);
-    if (rv && rv.d < rv.river.w + rv.river.valley) {
+    if (river > 0 && rv && rv.d < rv.river.w + rv.river.valley) {
       const { w, valley } = rv.river;
       // planicie de inundación: baja suave hacia el río
       const vk = (1 - smooth(w, w + valley, rv.d)) * (1 - core);
       h = Math.min(h, h + (WATER + 0.22 - h) * vk);
-      if (channel) {
+      if (river > 1) {
         const ck = 1 - smooth(w * 0.45, w * 1.15, rv.d);
         h = Math.min(h, h + (WATER - 0.4 - h) * ck);
       }
@@ -330,7 +331,48 @@ export async function createTerrain({ canvas, projects, reducedMotion, lang = 'e
   // se nivela debajo.
   const ROUTE = [...projects].sort((a, b) => (a.since || '').localeCompare(b.since || '')).map((p) => p.id);
   const routeSites = ROUTE.map((id) => sites.find((s) => s.id === id)).filter(Boolean);
-  const curve = new THREE.CatmullRomCurve3(routeSites.map((s) => new THREE.Vector3(s.x, 0, s.z)), true, 'centripetal');
+  // Donde la ruta cruza un cauce se agregan cuatro puntos alineados, perpendiculares al río: el
+  // tramo del medio queda recto y el puente cruza derecho, como uno de verdad.
+  const firstPass = new THREE.CatmullRomCurve3(routeSites.map((s) => new THREE.Vector3(s.x, 0, s.z)), true, 'centripetal');
+  const ctrl = [];
+  const stops = [];
+  const nSites = routeSites.length;
+  for (let i = 0; i < nSites; i++) {
+    stops.push(ctrl.length);
+    ctrl.push(new THREE.Vector3(routeSites[i].x, 0, routeSites[i].z));
+    // cruces entre este lugar y el siguiente
+    const STEPS = 300;
+    let run = null;
+    const crossings = [];
+    for (let k = 0; k <= STEPS; k++) {
+      const p = firstPass.getPoint((i + k / STEPS) / nSites);
+      const rv = rivers.nearest(p.x, p.z);
+      const wet = rv && rv.d < rv.river.w + 0.6;
+      if (wet) {
+        if (!run || rv.d < run.d) run = { ...rv, p: p.clone(), k };
+      } else if (run) {
+        crossings.push(run);
+        run = null;
+      }
+    }
+    if (run) crossings.push(run);
+    for (const c of crossings) {
+      const rt = rivers.curves[c.ri].getTangentAt(c.u);
+      let nx = -rt.z;
+      let nz = rt.x;
+      const a = firstPass.getPoint((i + Math.max(0, c.k - 5) / STEPS) / nSites);
+      const b = firstPass.getPoint((i + Math.min(STEPS, c.k + 5) / STEPS) / nSites);
+      if (nx * (b.x - a.x) + nz * (b.z - a.z) < 0) {
+        nx = -nx;
+        nz = -nz;
+      }
+      // el punto del cauce más cercano: el puente queda centrado sobre el agua
+      const rp = rivers.curves[c.ri].getPointAt(c.u);
+      const { w, valley } = c.river;
+      for (const o of [-(w + valley + 1.8), -(w + valley * 0.85), w + valley * 0.85, w + valley + 1.8]) ctrl.push(new THREE.Vector3(rp.x + nx * o, 0, rp.z + nz * o));
+    }
+  }
+  const curve = new THREE.CatmullRomCurve3(ctrl, true, 'centripetal');
   const ROAD_W = 0.55; // semiancho de calzada
   const SHOULDER = 0.25; // banquina
   const NS = 1400;
@@ -338,7 +380,7 @@ export async function createTerrain({ canvas, projects, reducedMotion, lang = 'e
   for (let i = 0; i < NS; i++) {
     const p = curve.getPointAt(i / NS);
     const rv = rivers.nearest(p.x, p.z);
-    roadPts.push({ x: p.x, z: p.z, h: rawHeight(p.x, p.z, false), overWater: !!rv && rv.d < rv.river.w * 1.6 });
+    roadPts.push({ x: p.x, z: p.z, h: rawHeight(p.x, p.z, 0), overWater: !!rv && rv.d < rv.river.w * 1.6 });
   }
   // sobre el agua la ruta va en puente: tablero con gálibo sobre el río
   const DECK = WATER + 0.75;
@@ -379,6 +421,21 @@ export async function createTerrain({ canvas, projects, reducedMotion, lang = 'e
     if (!grid.has(key)) grid.set(key, []);
     grid.get(key).push(i);
   });
+  // Tramos en puente: donde el terreno real (con valle y cauce) queda bajo la rasante, cerca de un río.
+  roadPts.forEach((p) => {
+    const rv = rivers.nearest(p.x, p.z);
+    p.bridge = !!rv && rv.d < rv.river.w + rv.river.valley + 0.5 && p.h - rawHeight(p.x, p.z) > 0.35;
+  });
+  {
+    // se cierran huecos chicos y se extiende un poco cada extremo, hasta apoyar en la orilla
+    const f = roadPts.map((p) => p.bridge);
+    for (let i = 0; i < NS; i++) {
+      if (f[i]) continue;
+      let near = false;
+      for (let k = -3; k <= 3 && !near; k++) near = f[(i + k + NS) % NS];
+      if (near) roadPts[i].bridge = true;
+    }
+  }
   function nearestRoad(x, z) {
     const cx = Math.floor(x / CELL);
     const cz = Math.floor(z / CELL);
@@ -398,13 +455,15 @@ export async function createTerrain({ canvas, projects, reducedMotion, lang = 'e
         }
       }
     }
-    return best ? { d: Math.sqrt(bd), h: best.h } : null;
+    return best ? { d: Math.sqrt(bd), h: best.h, bridge: best.bridge } : null;
   }
   const BLEND = 3; // ancho de los taludes de la ruta
   const roadHeight = (x, z) => {
     const raw = rawHeight(x, z);
     const r = nearestRoad(x, z);
     if (!r || r.d > ROAD_W + SHOULDER + BLEND) return raw;
+    // debajo de un puente el terreno no se rellena
+    if (r.bridge) return raw;
     let b = 1 - smooth(ROAD_W + SHOULDER * 0.5, ROAD_W + SHOULDER + BLEND, r.d);
     // debajo del puente no se rellena: el agua pasa por debajo
     const rv = rivers.nearest(x, z);
@@ -442,6 +501,7 @@ export async function createTerrain({ canvas, projects, reducedMotion, lang = 'e
   scene.add(water);
 
   const bridgeMeshes = [];
+  const bridgeInfo = []; // centro de cada puente (para pruebas en desarrollo)
 
   // ---------- Ruta: calzada + banquinas, plana en sentido transversal ----------
   const roadHeightAt = (t) => {
@@ -517,67 +577,74 @@ export async function createTerrain({ canvas, projects, reducedMotion, lang = 'e
       g.setAttribute('color', new THREE.BufferAttribute(c, 3));
       parts.push(g);
     };
-    // tramos seguidos de la ruta sobre el agua
+    // tramos seguidos de la ruta en puente
     const runs = [];
     let start = -1;
     for (let i = 0; i <= NS; i++) {
-      const wet = i < NS && nearWater[i] < 0.45;
-      if (wet && start < 0) start = i;
-      if (!wet && start >= 0) {
+      const on = i < NS && roadPts[i].bridge;
+      if (on && start < 0) start = i;
+      if (!on && start >= 0) {
         runs.push([start, i - 1]);
         start = -1;
       }
     }
     const CONC = '#b9bcc0';
-    const RAIL = '#d8dadd';
-    for (const [a0, b0] of runs) {
-      const a = a0 - 4;
-      const b = b0 + 4;
-      const at = (i) => {
-        const k = (i + NS) % NS;
-        const p = curve.getPointAt(k / NS);
-        const t = curve.getTangentAt(k / NS);
-        return { p, t, h: roadPts[k].h, rot: Math.atan2(t.x, t.z) };
-      };
-      for (let i = a; i < b; i++) {
+    const RAIL = '#e3e5e8';
+    const at = (i) => {
+      const k = (i + NS) % NS;
+      const p = curve.getPointAt(k / NS);
+      const t = curve.getTangentAt(k / NS).setY(0).normalize();
+      return { p, t, h: roadPts[k].h, rot: Math.atan2(t.x, t.z) };
+    };
+    for (const [a, b] of runs) {
+      let dist = 0;
+      let nextPost = 0;
+      let nextPier = 1.2;
+      for (let i = a; i <= b; i++) {
         const s0 = at(i);
         const s1 = at(i + 1);
         const mx = (s0.p.x + s1.p.x) / 2;
         const mz = (s0.p.z + s1.p.z) / 2;
-        const len = Math.hypot(s1.p.x - s0.p.x, s1.p.z - s0.p.z) + 0.02;
+        const len = Math.hypot(s1.p.x - s0.p.x, s1.p.z - s0.p.z) + 0.01;
         const hh = (s0.h + s1.h) / 2;
-        // tablero y cordones
-        put(box, CONC, mx, hh - 0.08, mz, s0.rot, (ROAD_W + 0.16) * 2, 0.26, len);
+        // tablero, cordones y baranda continua
+        put(box, CONC, mx, hh - 0.12, mz, s0.rot, (ROAD_W + 0.18) * 2, 0.3, len);
         for (const side of [-1, 1]) {
-          const ox = -s0.t.z * side * (ROAD_W + 0.1);
-          const oz = s0.t.x * side * (ROAD_W + 0.1);
-          put(box, CONC, mx + ox, hh + 0.1, mz + oz, s0.rot, 0.1, 0.12, len);
-          put(box, RAIL, mx + ox, hh + 0.36, mz + oz, s0.rot, 0.05, 0.04, len);
-          if ((i - a) % 3 === 0) put(box, RAIL, s0.p.x + ox, s0.h + 0.24, s0.p.z + oz, s0.rot, 0.05, 0.26, 0.05);
+          const ox = -s0.t.z * side * (ROAD_W + 0.12);
+          const oz = s0.t.x * side * (ROAD_W + 0.12);
+          put(box, CONC, mx + ox, hh + 0.08, mz + oz, s0.rot, 0.12, 0.14, len);
+          put(box, RAIL, mx + ox, hh + 0.36, mz + oz, s0.rot, 0.06, 0.05, len);
+          put(box, RAIL, mx + ox, hh + 0.24, mz + oz, s0.rot, 0.03, 0.03, len);
+          if (dist >= nextPost) put(box, RAIL, s0.p.x + ox, s0.h + 0.24, s0.p.z + oz, s0.rot, 0.06, 0.28, 0.06);
         }
-      }
-      // pilas en el agua, cada tanto
-      const mid = Math.round((a0 + b0) / 2);
-      const span = b0 - a0;
-      const piers = span > 10 ? [mid - Math.round(span / 4), mid + Math.round(span / 4)] : [mid];
-      for (const i of piers) {
-        const s0 = at(i);
-        const bottom = WATER - 0.6;
-        const hgt = s0.h - 0.2 - bottom;
-        for (const side of [-1, 1]) {
-          const ox = -s0.t.z * side * ROAD_W * 0.6;
-          const oz = s0.t.x * side * ROAD_W * 0.6;
-          put(cyl, CONC, s0.p.x + ox, bottom + hgt / 2, s0.p.z + oz, 0, 0.22, hgt, 0.22);
+        if (dist >= nextPost) nextPost += 0.75;
+        // pilas cada tanto, hasta el suelo o el lecho del río
+        if (dist >= nextPier && i < b - 4) {
+          nextPier += 1.9;
+          const ground = Math.max(rawHeight(s0.p.x, s0.p.z), WATER - 0.6);
+          const top = s0.h - 0.27;
+          const hgt = top - (ground - 0.3);
+          if (hgt > 0.25) {
+            for (const side of [-1, 1]) {
+              const ox = -s0.t.z * side * ROAD_W * 0.55;
+              const oz = s0.t.x * side * ROAD_W * 0.55;
+              put(cyl, CONC, s0.p.x + ox, ground - 0.3 + hgt / 2, s0.p.z + oz, 0, 0.28, hgt, 0.28);
+            }
+            put(box, CONC, s0.p.x, top - 0.06, s0.p.z, s0.rot, (ROAD_W + 0.15) * 2, 0.16, 0.34);
+          }
         }
-        put(box, CONC, s0.p.x, s0.h - 0.26, s0.p.z, s0.rot, (ROAD_W + 0.1) * 2, 0.12, 0.3);
+        dist += len;
       }
       // estribos en cada orilla
-      for (const i of [a, b]) {
+      for (const i of [a, b + 1]) {
         const s0 = at(i);
-        const bottom = WATER - 0.3;
-        const hgt = s0.h - 0.15 - bottom;
-        put(box, '#a9aca8', s0.p.x, bottom + hgt / 2, s0.p.z, s0.rot, (ROAD_W + 0.3) * 2, hgt, 0.35);
+        const g = rawHeight(s0.p.x, s0.p.z);
+        const bottom = Math.min(g, s0.h) - 0.6;
+        const hgt = s0.h - 0.1 - bottom;
+        put(box, '#a9aca8', s0.p.x, bottom + hgt / 2, s0.p.z, s0.rot, (ROAD_W + 0.3) * 2, hgt, 0.4);
       }
+      const mid = at(Math.round((a + b) / 2));
+      bridgeInfo.push({ x: mid.p.x, y: mid.h, z: mid.p.z, tx: mid.t.x, tz: mid.t.z, len: b - a });
     }
     if (parts.length) {
       const mesh = new THREE.Mesh(mergeGeometries(parts), new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
@@ -587,7 +654,8 @@ export async function createTerrain({ canvas, projects, reducedMotion, lang = 'e
     }
     return runs.length;
   })();
-  if (import.meta.env.DEV) window.__relieve.bridges = bridgeCount;
+  if (import.meta.env.DEV) window.__relieve.bridges = bridgeInfo;
+  void bridgeCount;
 
   // ---------- Luz (solo para vegetación y vehículos; el terreno tiene su propio sombreado) ----------
   scene.add(new THREE.HemisphereLight(0xa8c0ff, 0x1c2a1c, 1.3));
@@ -744,7 +812,7 @@ export async function createTerrain({ canvas, projects, reducedMotion, lang = 'e
     // los carteles se dibujan en un canvas: esperar la tipografía, pero sin trabar la carga
     await Promise.race([Promise.all(['700 64px "Space Grotesk"', '500 40px "Space Grotesk"'].map((f) => document.fonts.load(f))), new Promise((r) => setTimeout(r, 1500))]).catch(() => {});
   }
-  const places = buildPlaces({ projects, sites: routeSites, curve, height, water: WATER, roadHalf: ROAD_W + SHOULDER, lang, quality });
+  const places = buildPlaces({ projects, sites: routeSites, stops, curve, height, water: WATER, roadHalf: ROAD_W + SHOULDER, lang, quality });
   scene.add(places.root);
 
   // punto blanco del pin: un círculo nítido
@@ -1023,7 +1091,16 @@ export async function createTerrain({ canvas, projects, reducedMotion, lang = 'e
 
   let lastVegRise = -1;
   const stats = { js: 0, render: 0, n: 0, quality: quality.name, perfLevel: 0 };
-  if (import.meta.env.DEV) window.__relieve.stats = stats;
+  if (import.meta.env.DEV) {
+    window.__relieve.stats = stats;
+    window.__relieve.height = height;
+    window.__relieve.view = (px, py, pz, tx, ty, tz) => {
+      flying = false;
+      camera.position.set(px, py, pz);
+      controls.target.set(tx, ty, tz);
+      camera.lookAt(controls.target);
+    };
+  }
 
   // ---------- Ajuste de calidad en marcha ----------
   // Si los cuadros por segundo quedan por debajo de 40 durante 2 s, se baja un escalón.
