@@ -114,35 +114,43 @@ function makeHeight(sites, rivers) {
     const n = fbm(x * 0.05, z * 0.05);
     const ridge = 1 - Math.abs(fbm(x * 0.03 + 40, z * 0.03 - 12, 4) * 2 - 1);
     const detail = fbm(x * 0.21 + 7, z * 0.21 - 3, 3) - 0.5; // irregularidades chicas
-    let h = n * 6 + ridge * ridge * 2.6 + detail * 1.1 - 1.6;
-    for (const s of sites) {
-      const dx = x - s.x;
-      const dz = z - s.z;
-      const sig = 6.5 + s.h * 0.2;
-      h += s.h * 0.5 * Math.exp(-(dx * dx + dz * dz) / (2 * sig * sig));
-    }
-    return h;
+    return n * 7 + ridge * ridge * 3 + detail * 1.2 - 2.1;
   };
-  // Explanada en cada lugar: el pueblo, la estación o el local se asientan en terreno parejo.
-  // Va antes de trazar la ruta, así la rasante la sigue y el terreno nunca la tapa.
-  const pads = sites.map((s) => ({ x: s.x, z: s.z, h: base(s.x, s.z) }));
+  // Explanada en cada lugar: el pueblo, la estación o el local se asientan en terreno parejo, a la
+  // altura media de su zona (no en una cima: así no queda una meseta con escalones). Va antes de
+  // trazar la ruta, así la rasante la sigue y el terreno nunca la tapa.
+  const pads = sites.map((s) => {
+    let sum = 0;
+    let n = 0;
+    for (let r = 0; r <= 6; r += 1.5) {
+      for (let a = 0; a < Math.PI * 2; a += Math.PI / 6) {
+        sum += base(s.x + Math.cos(a) * r, s.z + Math.sin(a) * r);
+        n++;
+      }
+    }
+    return { x: s.x, z: s.z, h: Math.max(sum / n, WATER + 0.8) };
+  });
   return (x, z, channel = true) => {
     let h = base(x, z);
+    // explanadas primero; el núcleo plano de cada una no lo toca el valle del río
+    let core = 0;
+    for (const p of pads) {
+      const d = Math.hypot(x - p.x, z - p.z);
+      if (d < 12) {
+        h += (p.h - h) * (1 - smooth(4.8, 12, d));
+        core = Math.max(core, 1 - smooth(4.8, 7.5, d));
+      }
+    }
     const rv = rivers.nearest(x, z);
     if (rv && rv.d < rv.river.w + rv.river.valley) {
       const { w, valley } = rv.river;
       // planicie de inundación: baja suave hacia el río
-      const vk = 1 - smooth(w, w + valley, rv.d);
+      const vk = (1 - smooth(w, w + valley, rv.d)) * (1 - core);
       h = Math.min(h, h + (WATER + 0.22 - h) * vk);
       if (channel) {
         const ck = 1 - smooth(w * 0.45, w * 1.15, rv.d);
         h = Math.min(h, h + (WATER - 0.4 - h) * ck);
       }
-    }
-    // después del valle, para que el río no se coma la explanada (los cauces quedan a 8 o más)
-    for (const p of pads) {
-      const d = Math.hypot(x - p.x, z - p.z);
-      if (d < 8) h += (p.h - h) * (1 - smooth(5.2, 8, d));
     }
     const r = Math.hypot(x, z) / (SIZE * 0.5);
     h = h * (1 - smooth(0.55, 0.98, r)) - smooth(0.8, 1.0, r) * 0.6;
@@ -392,7 +400,7 @@ export async function createTerrain({ canvas, projects, reducedMotion, lang = 'e
     }
     return best ? { d: Math.sqrt(bd), h: best.h } : null;
   }
-  const BLEND = 1.7;
+  const BLEND = 3; // ancho de los taludes de la ruta
   const roadHeight = (x, z) => {
     const raw = rawHeight(x, z);
     const r = nearestRoad(x, z);
@@ -1147,6 +1155,7 @@ export async function createTerrain({ canvas, projects, reducedMotion, lang = 'e
       screen.project(camera);
       const d = labelData[i];
       d.visible = screen.z < 1 && Math.abs(screen.x) < 1.2 && Math.abs(screen.y) < 1.2;
+      d.depth = screen.z;
       d.x = (screen.x * 0.5 + 0.5) * w;
       d.y = (-screen.y * 0.5 + 0.5) * h;
       d.dim = m.dim > 0.5;

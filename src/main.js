@@ -169,15 +169,46 @@ function renderLabels() {
     b.setAttribute('aria-label', `${p.name} — ${p.tagline[lang]}`);
   });
   sunLabelEl.textContent = t('sun');
+  labelSize.clear(); // otro idioma, otro ancho
 }
 
+// Los nombres no se pisan: el más cercano a la cámara queda en su lugar y los de atrás suben
+// hasta encontrar un hueco. El ancho se mide una vez por idioma, no en cada cuadro.
+const labelSize = new Map();
+function measureLabels() {
+  labelSize.clear();
+  labelEls.forEach((el, id) => labelSize.set(id, { w: el.offsetWidth, h: el.offsetHeight }));
+}
+const labelOffset = new Map(); // corrimiento suavizado, para que no salten
 function onFrame(data, sun, isFocused) {
+  if (!labelSize.size) measureLabels();
+  const placed = [];
+  const order = data.filter((d) => d.visible && !isFocused).sort((a, b) => (a.depth ?? 0) - (b.depth ?? 0));
+  const goal = new Map();
+  for (const d of order) {
+    const { w, h } = labelSize.get(d.id) || { w: 120, h: 26 };
+    let dy = 0;
+    for (let tries = 0; tries < 8; tries++) {
+      const r = { x0: d.x - w / 2 - 3, x1: d.x + w / 2 + 3, y0: d.y - h - dy - 3, y1: d.y - dy + 3 };
+      const hit = placed.find((p) => r.x0 < p.x1 && r.x1 > p.x0 && r.y0 < p.y1 && r.y1 > p.y0);
+      if (!hit) {
+        placed.push(r);
+        break;
+      }
+      dy += hit.y1 - r.y0 + 1;
+    }
+    goal.set(d.id, dy);
+  }
   for (const d of data) {
     const el = labelEls.get(d.id);
     const hide = !d.visible || isFocused;
     el.classList.toggle('is-hidden', hide);
     el.classList.toggle('is-dim', d.dim);
-    if (!hide) el.style.transform = `translate(${d.x}px, ${d.y}px) translate(-50%, -100%)`;
+    if (hide) continue;
+    const prev = labelOffset.get(d.id) ?? 0;
+    const dy = prev + ((goal.get(d.id) ?? 0) - prev) * 0.25;
+    labelOffset.set(d.id, dy);
+    el.style.transform = `translate(${d.x}px, ${d.y - dy}px) translate(-50%, -100%)`;
   }
   sunLabelEl.classList.toggle('is-hidden', !sun.visible || isFocused);
   sunLabelEl.style.transform = `translate(${sun.x}px, ${sun.y}px) translate(-50%, 0)`;
