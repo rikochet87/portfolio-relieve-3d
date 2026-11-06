@@ -308,7 +308,7 @@ function renderAbout() {
   $('#about-body').innerHTML = `
     <div class="about">
       <p class="hero__kicker">${esc(t('hero.role'))}</p>
-      <h2 class="overlay__title">Matías Rosello</h2>
+      <h2 class="overlay__title">Matías Roselló</h2>
       <p class="about__lead">${esc(a.lead)}</p>
       <div class="about__cols">
         <div>

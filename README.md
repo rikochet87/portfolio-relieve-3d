@@ -1,4 +1,4 @@
-# Portfolio · Matías Rosello — relieve 3D
+# Portfolio · Matías Roselló — relieve 3D
 
 Portfolio personal hecho con **Three.js + Vite**: un mapa topográfico 3D recorrido por una ruta, donde cada proyecto es un lugar sobre el camino. Un guiño a mi trabajo en GIS y vialidad. Bilingüe ES/EN.
 
