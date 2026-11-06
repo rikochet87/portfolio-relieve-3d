@@ -60,16 +60,76 @@ const smooth = (e0, e1, x) => {
   return t * t * (3 - 2 * t);
 };
 
-function makeHeight(sites) {
-  return (x, z) => {
-    const n = fbm(x * 0.045, z * 0.045);
+// Un río que cruza el mapa y un arroyo que desemboca en él. Pasan entre los lugares, así que la
+// ruta los cruza por puentes. w = semiancho del cauce; valley = ancho de la planicie a cada lado.
+const RIVERS = [
+  { w: 1.05, valley: 5, pts: [[-52, -23], [-36, -9], [-24, -4], [-12, 0], [0, 2], [12, 4], [16, 12], [16, 22], [14, 32], [10, 52]] },
+  { w: 0.62, valley: 3, pts: [[46, -42], [34, -28], [26, -17], [16, -8], [6, 3]] },
+];
+
+// Muestras de cada cauce en una grilla, para saber rápido a qué distancia está un punto.
+function makeRivers() {
+  const CELLR = 3;
+  const grid = new Map();
+  const curves = RIVERS.map((r, ri) => {
+    const c = new THREE.CatmullRomCurve3(r.pts.map(([x, z]) => new THREE.Vector3(x, 0, z)), false, 'centripetal');
+    const n = Math.ceil(c.getLength() / 0.25);
+    for (let i = 0; i <= n; i++) {
+      const p = c.getPointAt(i / n);
+      const key = `${Math.floor(p.x / CELLR)},${Math.floor(p.z / CELLR)}`;
+      if (!grid.has(key)) grid.set(key, []);
+      grid.get(key).push({ x: p.x, z: p.z, ri });
+    }
+    return c;
+  });
+  // distancia al cauce más cercano (en unidades) y cuál es
+  const nearest = (x, z) => {
+    const cx = Math.floor(x / CELLR);
+    const cz = Math.floor(z / CELLR);
+    let best = null;
+    let bd = Infinity;
+    for (let i = -2; i <= 2; i++) {
+      for (let j = -2; j <= 2; j++) {
+        const list = grid.get(`${cx + i},${cz + j}`);
+        if (!list) continue;
+        for (const p of list) {
+          const d = (p.x - x) ** 2 + (p.z - z) ** 2;
+          if (d < bd) {
+            bd = d;
+            best = p;
+          }
+        }
+      }
+    }
+    return best ? { d: Math.sqrt(bd), river: RIVERS[best.ri] } : null;
+  };
+  return { curves, nearest };
+}
+
+// Llanura chaqueña: lomas bajas, ondulaciones chicas, algún bajo con agua y los cauces.
+// channel = false da la altura sin el cauce excavado (sirve para la rasante de la ruta).
+function makeHeight(sites, rivers) {
+  return (x, z, channel = true) => {
+    const n = fbm(x * 0.05, z * 0.05);
     const ridge = 1 - Math.abs(fbm(x * 0.03 + 40, z * 0.03 - 12, 4) * 2 - 1);
-    let h = n * 6.5 + ridge * ridge * 3 - 3;
+    const detail = fbm(x * 0.21 + 7, z * 0.21 - 3, 3) - 0.5; // irregularidades chicas
+    let h = n * 3.4 + ridge * ridge * 1.1 + detail * 0.75 - 0.75;
     for (const s of sites) {
       const dx = x - s.x;
       const dz = z - s.z;
-      const sig = 5.2 + s.h * 0.25;
-      h += s.h * Math.exp(-(dx * dx + dz * dz) / (2 * sig * sig));
+      const sig = 7.5 + s.h * 0.2;
+      h += s.h * 0.14 * Math.exp(-(dx * dx + dz * dz) / (2 * sig * sig));
+    }
+    const rv = rivers.nearest(x, z);
+    if (rv && rv.d < rv.river.w + rv.river.valley) {
+      const { w, valley } = rv.river;
+      // planicie de inundación: baja suave hacia el río
+      const vk = 1 - smooth(w, w + valley, rv.d);
+      h = Math.min(h, h + (WATER + 0.22 - h) * vk);
+      if (channel) {
+        const ck = 1 - smooth(w * 0.45, w * 1.15, rv.d);
+        h = Math.min(h, h + (WATER - 0.4 - h) * ck);
+      }
     }
     const r = Math.hypot(x, z) / (SIZE * 0.5);
     h = h * (1 - smooth(0.55, 0.98, r)) - smooth(0.8, 1.0, r) * 0.6;
@@ -108,11 +168,14 @@ const TERRAIN_FRAG = /* glsl */ `
     vec3 L = normalize(vec3(-1.0, 1.3, -1.0));
     float hs = clamp(dot(normalize(vN), L), 0.0, 1.0);
     c *= 0.3 + hs * 1.0;
-    // curvas de nivel: normales cada 0,9 y maestras cada 4,5
-    float f = h / 0.9;
+    // curvas de nivel: normales cada 0,45 y maestras cada 2,25 (la llanura es baja)
+    float f = h / 0.45;
     float line = 1.0 - smoothstep(fwidth(f) * 0.5, fwidth(f) * 1.5, abs(fract(f - 0.5) - 0.5));
-    float f5 = h / 4.5;
-    float line5 = 1.0 - smoothstep(0.0, fwidth(f5) * 1.8, abs(fract(f5 - 0.5) - 0.5));
+    // en terreno plano (explanadas, bajos) una curva de nivel sería un rayado: se apaga
+    float slopeK = smoothstep(0.004, 0.03, fwidth(f));
+    line *= slopeK;
+    float f5 = h / 2.25;
+    float line5 = (1.0 - smoothstep(0.0, fwidth(f5) * 1.8, abs(fract(f5 - 0.5) - 0.5))) * slopeK;
     vec3 lc = mix(vec3(0.35, 0.85, 0.75), vec3(1.0, 0.76, 0.42), smoothstep(0.45, 0.9, t));
     c = mix(c, lc, clamp(line * 0.32 + line5 * 0.75, 0.0, 1.0) * step(0.02, h));
     // cuadrícula cada 1 km
@@ -141,7 +204,7 @@ const WATER_FRAG = /* glsl */ `
   void main() {
     float r = length(vW.xz) / uRadius;
     float rip = 0.5 + 0.5 * sin(vW.x * 1.3 + uTime * 0.8) * sin(vW.z * 1.1 - uTime * 0.6);
-    vec3 c = mix(vec3(0.03, 0.12, 0.2), vec3(0.08, 0.26, 0.38), rip * 0.5);
+    vec3 c = mix(vec3(0.05, 0.17, 0.27), vec3(0.12, 0.34, 0.47), rip * 0.5);
     float a = 0.82 * (1.0 - smoothstep(0.66, 0.95, r));
     gl_FragColor = vec4(c, a);
   }
@@ -237,7 +300,8 @@ export async function createTerrain({ canvas, projects, reducedMotion, lang = 'e
   const uRise = { value: reducedMotion ? 1 : 0 };
 
   const sites = projects.map((p) => ({ ...(SITES[p.id] || { x: 0, z: 0, h: 6 }), id: p.id }));
-  const rawHeight = makeHeight(sites);
+  const rivers = makeRivers();
+  const rawHeight = makeHeight(sites, rivers);
 
   // ---------- Trazado de la ruta ----------
   // La ruta pasa por todos los proyectos en orden de creación: el primero es el km 0. El perfil
@@ -252,8 +316,15 @@ export async function createTerrain({ canvas, projects, reducedMotion, lang = 'e
   const roadPts = [];
   for (let i = 0; i < NS; i++) {
     const p = curve.getPointAt(i / NS);
-    roadPts.push({ x: p.x, z: p.z, h: rawHeight(p.x, p.z) });
+    const rv = rivers.nearest(p.x, p.z);
+    roadPts.push({ x: p.x, z: p.z, h: rawHeight(p.x, p.z, false), overWater: !!rv && rv.d < rv.river.w * 1.6 });
   }
+  // sobre el agua la ruta va en puente: tablero con gálibo sobre el río
+  const DECK = WATER + 0.75;
+  const nearWater = roadPts.map((p) => {
+    const rv = rivers.nearest(p.x, p.z);
+    return rv ? rv.d - rv.river.w : Infinity;
+  });
   for (let pass = 0; pass < 4; pass++) {
     const hs = roadPts.map((p) => p.h);
     const K = 14;
@@ -264,6 +335,21 @@ export async function createTerrain({ canvas, projects, reducedMotion, lang = 'e
     }
   }
   for (const p of roadPts) p.h = Math.max(p.h, WATER + 0.3);
+  // gálibo del puente y terraplén de acceso: se fija, se suaviza y se vuelve a fijar
+  for (let pass = 0; pass < 3; pass++) {
+    roadPts.forEach((p, i) => {
+      if (nearWater[i] < 1.2) p.h = Math.max(p.h, DECK);
+    });
+    const hs = roadPts.map((p) => p.h);
+    for (let i = 0; i < NS; i++) {
+      let s2 = 0;
+      for (let k = -6; k <= 6; k++) s2 += hs[(i + k + NS) % NS];
+      roadPts[i].h = Math.max(roadPts[i].h, s2 / 13);
+    }
+  }
+  roadPts.forEach((p, i) => {
+    if (nearWater[i] < 1.2) p.h = Math.max(p.h, DECK);
+  });
 
   const CELL = 2.5;
   const grid = new Map();
@@ -294,12 +380,29 @@ export async function createTerrain({ canvas, projects, reducedMotion, lang = 'e
     return best ? { d: Math.sqrt(bd), h: best.h } : null;
   }
   const BLEND = 1.7;
-  const height = (x, z) => {
+  const roadHeight = (x, z) => {
     const raw = rawHeight(x, z);
     const r = nearestRoad(x, z);
     if (!r || r.d > ROAD_W + SHOULDER + BLEND) return raw;
-    const b = 1 - smooth(ROAD_W + SHOULDER * 0.5, ROAD_W + SHOULDER + BLEND, r.d);
+    let b = 1 - smooth(ROAD_W + SHOULDER * 0.5, ROAD_W + SHOULDER + BLEND, r.d);
+    // debajo del puente no se rellena: el agua pasa por debajo
+    const rv = rivers.nearest(x, z);
+    if (rv) b *= smooth(rv.river.w * 1.05, rv.river.w * 1.75, rv.d);
     return raw + (r.h - 0.05 - raw) * b;
+  };
+  // Explanada en cada lugar: el pueblo, la estación o el local se asientan en terreno parejo,
+  // a la altura de la ruta en ese punto.
+  const pads = sites.map((s) => {
+    const r = nearestRoad(s.x, s.z);
+    return { x: s.x, z: s.z, h: (r ? r.h : rawHeight(s.x, s.z)) - 0.05 };
+  });
+  const height = (x, z) => {
+    let h = roadHeight(x, z);
+    for (const p of pads) {
+      const d = Math.hypot(x - p.x, z - p.z);
+      if (d < 9) h += (p.h - h) * (1 - smooth(4, 9, d));
+    }
+    return h;
   };
 
   // ---------- Terreno ----------
@@ -329,6 +432,8 @@ export async function createTerrain({ canvas, projects, reducedMotion, lang = 'e
     new THREE.ShaderMaterial({ vertexShader: WATER_VERT, fragmentShader: WATER_FRAG, uniforms: { uTime, uRadius: { value: SIZE * 0.5 } }, transparent: true, depthWrite: false })
   );
   scene.add(water);
+
+  const bridgeMeshes = [];
 
   // ---------- Ruta: calzada + banquinas, plana en sentido transversal ----------
   const roadHeightAt = (t) => {
@@ -381,6 +486,100 @@ export async function createTerrain({ canvas, projects, reducedMotion, lang = 'e
     road.userData.isRoad = true;
     scene.add(road);
   }
+
+  // ---------- Puentes: donde la ruta cruza un cauce ----------
+  // Tablero de hormigón debajo de la calzada, barandas con postes, pilas en el agua y estribos.
+  const bridgeCount = (() => {
+    const parts = [];
+    const box = new THREE.BoxGeometry(1, 1, 1).toNonIndexed();
+    box.deleteAttribute('uv');
+    const cyl = new THREE.CylinderGeometry(0.5, 0.5, 1, 10).toNonIndexed();
+    cyl.deleteAttribute('uv');
+    const m4 = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const up = new THREE.Vector3(0, 1, 0);
+    const col = new THREE.Color();
+    const put = (geo, color, x, y, z, rotY, sx, sy, sz) => {
+      q.setFromAxisAngle(up, rotY);
+      m4.compose(new THREE.Vector3(x, y, z), q, new THREE.Vector3(sx, sy, sz));
+      const g = geo.clone().applyMatrix4(m4);
+      col.set(color);
+      const c = new Float32Array(g.attributes.position.count * 3);
+      for (let i = 0; i < c.length; i += 3) c.set([col.r, col.g, col.b], i);
+      g.setAttribute('color', new THREE.BufferAttribute(c, 3));
+      parts.push(g);
+    };
+    // tramos seguidos de la ruta sobre el agua
+    const runs = [];
+    let start = -1;
+    for (let i = 0; i <= NS; i++) {
+      const wet = i < NS && nearWater[i] < 0.45;
+      if (wet && start < 0) start = i;
+      if (!wet && start >= 0) {
+        runs.push([start, i - 1]);
+        start = -1;
+      }
+    }
+    const CONC = '#b9bcc0';
+    const RAIL = '#d8dadd';
+    for (const [a0, b0] of runs) {
+      const a = a0 - 4;
+      const b = b0 + 4;
+      const at = (i) => {
+        const k = (i + NS) % NS;
+        const p = curve.getPointAt(k / NS);
+        const t = curve.getTangentAt(k / NS);
+        return { p, t, h: roadPts[k].h, rot: Math.atan2(t.x, t.z) };
+      };
+      for (let i = a; i < b; i++) {
+        const s0 = at(i);
+        const s1 = at(i + 1);
+        const mx = (s0.p.x + s1.p.x) / 2;
+        const mz = (s0.p.z + s1.p.z) / 2;
+        const len = Math.hypot(s1.p.x - s0.p.x, s1.p.z - s0.p.z) + 0.02;
+        const hh = (s0.h + s1.h) / 2;
+        // tablero y cordones
+        put(box, CONC, mx, hh - 0.08, mz, s0.rot, (ROAD_W + 0.16) * 2, 0.26, len);
+        for (const side of [-1, 1]) {
+          const ox = -s0.t.z * side * (ROAD_W + 0.1);
+          const oz = s0.t.x * side * (ROAD_W + 0.1);
+          put(box, CONC, mx + ox, hh + 0.1, mz + oz, s0.rot, 0.1, 0.12, len);
+          put(box, RAIL, mx + ox, hh + 0.36, mz + oz, s0.rot, 0.05, 0.04, len);
+          if ((i - a) % 3 === 0) put(box, RAIL, s0.p.x + ox, s0.h + 0.24, s0.p.z + oz, s0.rot, 0.05, 0.26, 0.05);
+        }
+      }
+      // pilas en el agua, cada tanto
+      const mid = Math.round((a0 + b0) / 2);
+      const span = b0 - a0;
+      const piers = span > 10 ? [mid - Math.round(span / 4), mid + Math.round(span / 4)] : [mid];
+      for (const i of piers) {
+        const s0 = at(i);
+        const bottom = WATER - 0.6;
+        const hgt = s0.h - 0.2 - bottom;
+        for (const side of [-1, 1]) {
+          const ox = -s0.t.z * side * ROAD_W * 0.6;
+          const oz = s0.t.x * side * ROAD_W * 0.6;
+          put(cyl, CONC, s0.p.x + ox, bottom + hgt / 2, s0.p.z + oz, 0, 0.22, hgt, 0.22);
+        }
+        put(box, CONC, s0.p.x, s0.h - 0.26, s0.p.z, s0.rot, (ROAD_W + 0.1) * 2, 0.12, 0.3);
+      }
+      // estribos en cada orilla
+      for (const i of [a, b]) {
+        const s0 = at(i);
+        const bottom = WATER - 0.3;
+        const hgt = s0.h - 0.15 - bottom;
+        put(box, '#a9aca8', s0.p.x, bottom + hgt / 2, s0.p.z, s0.rot, (ROAD_W + 0.3) * 2, hgt, 0.35);
+      }
+    }
+    if (parts.length) {
+      const mesh = new THREE.Mesh(mergeGeometries(parts), new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
+      mesh.userData.isBridge = true;
+      scene.add(mesh);
+      bridgeMeshes.push(mesh);
+    }
+    return runs.length;
+  })();
+  if (import.meta.env.DEV) window.__relieve.bridges = bridgeCount;
 
   // ---------- Luz (solo para vegetación y vehículos; el terreno tiene su propio sombreado) ----------
   scene.add(new THREE.HemisphereLight(0xa8c0ff, 0x1c2a1c, 1.3));
@@ -440,16 +639,18 @@ export async function createTerrain({ canvas, projects, reducedMotion, lang = 'e
       if (h < WATER + 0.12) continue;
       const road = nearestRoad(x, z);
       if (road && road.d < ROAD_W + SHOULDER + 0.45) continue;
+      const rv = rivers.nearest(x, z);
+      if (rv && rv.d < rv.river.w + 0.25) continue;
       if (sites.some((s) => Math.hypot(x - s.x, z - s.z) < 6.2)) continue; // lugar para el pueblo, la estación o el local
       const slope = Math.hypot(height(x + 0.4, z) - height(x - 0.4, z), height(x, z + 0.4) - height(x, z - 0.4)) / 0.8;
       const forest = fbm(x * 0.07 + 100, z * 0.07 - 50, 3);
       const edgeFade = 1 - smooth(0.8, 1, rr / R); // menos densidad hacia el borde del mapa
       if (rnd() > edgeFade) continue;
-      if (h < WATER + 2.2) {
+      if (h < WATER + 0.7 || (rv && rv.d < rv.river.w + 2.2)) {
         // palmares en las zonas bajas, como en el Chaco
         if (rnd() < 0.35) add('palm', x, z, h, 0.8 + rnd() * 0.5);
         else if (rnd() < 0.3) add('bush', x, z, h, 0.8 + rnd() * 0.6);
-      } else if (h > 10 || slope > 2.2) {
+      } else if (h > 6.5 || slope > 1.6) {
         if (rnd() < 0.12) add('rock', x, z, h, 0.7 + rnd() * 1.1);
         else if (rnd() < 0.25) add('bush', x, z, h, 0.6 + rnd() * 0.5);
       } else if (forest > 0.5) {
@@ -870,6 +1071,10 @@ export async function createTerrain({ canvas, projects, reducedMotion, lang = 'e
     }
     moveCars(uTime.value, uRise.value);
     places.root.scale.y = Math.max(uRise.value, 0.001);
+    for (const b of bridgeMeshes) {
+      b.scale.y = Math.max(uRise.value, 0.001);
+      b.visible = uRise.value > 0.05;
+    }
     places.root.visible = uRise.value > 0.05;
     places.update(uTime.value);
 
