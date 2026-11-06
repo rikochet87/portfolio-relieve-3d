@@ -5,7 +5,7 @@ Portfolio personal hecho con **Three.js + Vite**: un mapa topográfico 3D recorr
 - **La ruta va en orden cronológico**: el primer proyecto es el km 0 y los demás siguen por fecha de creación (`since`).
 - **Cada categoría es un tipo de lugar**: los destacados son localidades (casas, tanque de agua, antena), los productos son estaciones de servicio y los trabajos para clientes, parajes con su local (la cancha tiene su cancha y el café, sus mesas).
 - **Señalización vial**: cartel verde de entrada con el nombre, una cifra y la fecha; mojón con el kilómetro; en las estaciones, el tótem y los surtidores muestran las tecnologías.
-- Llanura procedural con curvas de nivel, sombreado de relieve y tintas hipsométricas; un río y un arroyo con su planicie, y puentes donde la ruta los cruza (`RIVERS` en `src/terrain.js`). Cada lugar se asienta en una explanada a la altura de la ruta.
+- Terreno procedural con lomas, curvas de nivel, sombreado de relieve y tintas hipsométricas; un río y un arroyo con su planicie, y puentes donde la ruta los cruza (`RIVERS` en `src/terrain.js`). Cada lugar se asienta en una explanada a la altura de la ruta.
 - Vegetación instanciada (montes y palmares junto al agua) y vehículos circulando.
 - HUD estilo SIG: norte, escala y coordenadas Gauss-Krüger bajo el cursor.
 - Calidad adaptable: nivel inicial según el equipo y ajuste en marcha si bajan los cuadros por segundo.

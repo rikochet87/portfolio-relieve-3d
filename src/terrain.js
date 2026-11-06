@@ -63,7 +63,7 @@ const smooth = (e0, e1, x) => {
 // Un río que cruza el mapa y un arroyo que desemboca en él. Pasan entre los lugares, así que la
 // ruta los cruza por puentes. w = semiancho del cauce; valley = ancho de la planicie a cada lado.
 const RIVERS = [
-  { w: 1.05, valley: 5, pts: [[-52, -23], [-36, -9], [-24, -4], [-12, 0], [0, 2], [12, 4], [16, 12], [16, 22], [14, 32], [10, 52]] },
+  { w: 1.05, valley: 5, pts: [[-52, -23], [-36, -9], [-24, -4], [-12, 0], [0, 2], [12, 4], [14, 12], [14, 22], [13, 32], [10, 52]] },
   { w: 0.62, valley: 3, pts: [[46, -42], [34, -28], [26, -17], [16, -8], [6, 3]] },
 ];
 
@@ -109,17 +109,25 @@ function makeRivers() {
 // Llanura chaqueña: lomas bajas, ondulaciones chicas, algún bajo con agua y los cauces.
 // channel = false da la altura sin el cauce excavado (sirve para la rasante de la ruta).
 function makeHeight(sites, rivers) {
-  return (x, z, channel = true) => {
+  // relieve sin explanadas ni cauces
+  const base = (x, z) => {
     const n = fbm(x * 0.05, z * 0.05);
     const ridge = 1 - Math.abs(fbm(x * 0.03 + 40, z * 0.03 - 12, 4) * 2 - 1);
     const detail = fbm(x * 0.21 + 7, z * 0.21 - 3, 3) - 0.5; // irregularidades chicas
-    let h = n * 3.4 + ridge * ridge * 1.1 + detail * 0.75 - 0.75;
+    let h = n * 6 + ridge * ridge * 2.6 + detail * 1.1 - 1.6;
     for (const s of sites) {
       const dx = x - s.x;
       const dz = z - s.z;
-      const sig = 7.5 + s.h * 0.2;
-      h += s.h * 0.14 * Math.exp(-(dx * dx + dz * dz) / (2 * sig * sig));
+      const sig = 6.5 + s.h * 0.2;
+      h += s.h * 0.5 * Math.exp(-(dx * dx + dz * dz) / (2 * sig * sig));
     }
+    return h;
+  };
+  // Explanada en cada lugar: el pueblo, la estación o el local se asientan en terreno parejo.
+  // Va antes de trazar la ruta, así la rasante la sigue y el terreno nunca la tapa.
+  const pads = sites.map((s) => ({ x: s.x, z: s.z, h: base(s.x, s.z) }));
+  return (x, z, channel = true) => {
+    let h = base(x, z);
     const rv = rivers.nearest(x, z);
     if (rv && rv.d < rv.river.w + rv.river.valley) {
       const { w, valley } = rv.river;
@@ -130,6 +138,11 @@ function makeHeight(sites, rivers) {
         const ck = 1 - smooth(w * 0.45, w * 1.15, rv.d);
         h = Math.min(h, h + (WATER - 0.4 - h) * ck);
       }
+    }
+    // después del valle, para que el río no se coma la explanada (los cauces quedan a 8 o más)
+    for (const p of pads) {
+      const d = Math.hypot(x - p.x, z - p.z);
+      if (d < 8) h += (p.h - h) * (1 - smooth(5.2, 8, d));
     }
     const r = Math.hypot(x, z) / (SIZE * 0.5);
     h = h * (1 - smooth(0.55, 0.98, r)) - smooth(0.8, 1.0, r) * 0.6;
@@ -168,13 +181,13 @@ const TERRAIN_FRAG = /* glsl */ `
     vec3 L = normalize(vec3(-1.0, 1.3, -1.0));
     float hs = clamp(dot(normalize(vN), L), 0.0, 1.0);
     c *= 0.3 + hs * 1.0;
-    // curvas de nivel: normales cada 0,45 y maestras cada 2,25 (la llanura es baja)
-    float f = h / 0.45;
+    // curvas de nivel: normales cada 0,6 y maestras cada 3
+    float f = h / 0.6;
     float line = 1.0 - smoothstep(fwidth(f) * 0.5, fwidth(f) * 1.5, abs(fract(f - 0.5) - 0.5));
     // en terreno plano (explanadas, bajos) una curva de nivel sería un rayado: se apaga
     float slopeK = smoothstep(0.004, 0.03, fwidth(f));
     line *= slopeK;
-    float f5 = h / 2.25;
+    float f5 = h / 3.0;
     float line5 = (1.0 - smoothstep(0.0, fwidth(f5) * 1.8, abs(fract(f5 - 0.5) - 0.5))) * slopeK;
     vec3 lc = mix(vec3(0.35, 0.85, 0.75), vec3(1.0, 0.76, 0.42), smoothstep(0.45, 0.9, t));
     c = mix(c, lc, clamp(line * 0.32 + line5 * 0.75, 0.0, 1.0) * step(0.02, h));
@@ -390,20 +403,7 @@ export async function createTerrain({ canvas, projects, reducedMotion, lang = 'e
     if (rv) b *= smooth(rv.river.w * 1.05, rv.river.w * 1.75, rv.d);
     return raw + (r.h - 0.05 - raw) * b;
   };
-  // Explanada en cada lugar: el pueblo, la estación o el local se asientan en terreno parejo,
-  // a la altura de la ruta en ese punto.
-  const pads = sites.map((s) => {
-    const r = nearestRoad(s.x, s.z);
-    return { x: s.x, z: s.z, h: (r ? r.h : rawHeight(s.x, s.z)) - 0.05 };
-  });
-  const height = (x, z) => {
-    let h = roadHeight(x, z);
-    for (const p of pads) {
-      const d = Math.hypot(x - p.x, z - p.z);
-      if (d < 9) h += (p.h - h) * (1 - smooth(4, 9, d));
-    }
-    return h;
-  };
+  const height = roadHeight;
 
   // ---------- Terreno ----------
   await yieldFrame();
