@@ -203,7 +203,7 @@ export const PROJECTS = [
       ],
     },
     stack: ['JavaScript', 'PWA', 'IndexedDB', 'Web Bluetooth'],
-    images: ['img/actas.png'],
+    images: ['img/actas-2.jpg', 'img/actas.png'],
     links: [
       { type: 'demo', label: { es: 'Ver online', en: 'Live app' }, url: 'https://rikochet87.github.io/actas-guardaparques/' },
       { type: 'repo', label: { es: 'Repositorio', en: 'Repository' }, url: GH + 'actas-guardaparques' },
@@ -236,7 +236,7 @@ export const PROJECTS = [
       ],
     },
     stack: ['TypeScript', 'React Native', 'Expo'],
-    images: [],
+    images: ['img/racha.jpg', 'img/racha-2.jpg'],
     links: [{ type: 'repo', label: { es: 'Repositorio', en: 'Repository' }, url: GH + 'racha' }],
   },
   {
@@ -298,7 +298,7 @@ export const PROJECTS = [
       ],
     },
     stack: ['Three.js', 'JavaScript', 'GitHub Pages'],
-    images: [],
+    images: ['img/tropico.jpg', 'img/tropico-2.jpg'],
     links: [
       { type: 'demo', label: { es: 'Ver online', en: 'Live site' }, url: 'https://rikochet87.github.io/tropico-cafe/' },
       { type: 'repo', label: { es: 'Repositorio', en: 'Repository' }, url: GH + 'tropico-cafe' },

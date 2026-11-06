@@ -35,3 +35,15 @@
 @media (max-height: 500px) and (orientation: landscape) {
   .hud { display: none; }
 }
+
+/* contacto en la portada: el resto de la portada no recibe el puntero, para poder arrastrar el mapa */
+.hero__cta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; pointer-events: auto; }
+.btn--dark { background: rgba(10, 11, 20, 0.55); color: var(--ink); backdrop-filter: blur(6px); }
+@media (max-width: 760px) {
+  .hero__cta { margin-top: 12px; gap: 6px; }
+  .hero__cta .btn { padding: 7px 13px; font-size: 13px; }
+}
+@media (max-height: 500px) and (orientation: landscape) {
+  .hero__cta { display: none; }
+}
+.hero.is-hidden .hero__cta { pointer-events: none; }

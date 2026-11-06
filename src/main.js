@@ -6,6 +6,7 @@ const UI = {
   es: {
     'nav.about': 'Sobre mí',
     'nav.list': 'Lista',
+    'cta.mail': 'Escribime',
     'hero.kicker': 'Resistencia, Chaco · Argentina',
     'hero.role': 'Desarrollador de software asistido por IA · GIS y sistemas geoespaciales',
     'hero.hint': 'Cada cerro es un proyecto: los más altos son los destacados. Hacé click en un marcador · arrastrá para moverte · clic derecho para girar.',
@@ -22,6 +23,7 @@ const UI = {
   en: {
     'nav.about': 'About',
     'nav.list': 'List',
+    'cta.mail': 'Get in touch',
     'hero.kicker': 'Resistencia, Chaco · Argentina',
     'hero.role': 'AI-assisted software developer · GIS & geospatial systems',
     'hero.hint': 'Each peak is a project: the tallest are the featured ones. Click a marker · drag to pan · right-click to rotate.',
@@ -90,6 +92,7 @@ const STACK = [
 ];
 
 const EMAIL = 'rosellomatias87@gmail.com';
+const LINKEDIN = 'https://www.linkedin.com/in/matias-rosello-sig/';
 const $ = (s, el = document) => el.querySelector(s);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -292,6 +295,7 @@ function renderAbout() {
       <div class="contact">
         <p>${esc(a.contact)}</p>
         <a class="btn btn--primary" href="mailto:${EMAIL}">${EMAIL}</a>
+        <a class="btn" href="${LINKEDIN}" target="_blank" rel="noopener">LinkedIn ↗</a>
         <a class="btn" href="https://github.com/rikochet87" target="_blank" rel="noopener">GitHub ↗</a>
       </div>
     </div>`;
