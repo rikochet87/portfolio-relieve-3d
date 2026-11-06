@@ -1,10 +1,11 @@
 # Portfolio · Matías Rosello — relieve 3D
 
-Portfolio personal hecho con **Three.js + Vite**: un mapa topográfico 3D donde cada proyecto es un cerro con su marcador, unidos por una ruta. Un guiño a mi trabajo en GIS y vialidad. Bilingüe ES/EN.
+Portfolio personal hecho con **Three.js + Vite**: un mapa topográfico 3D recorrido por una ruta, donde cada proyecto es un lugar sobre el camino. Un guiño a mi trabajo en GIS y vialidad. Bilingüe ES/EN.
 
-- Terreno procedural con curvas de nivel, sombreado de relieve y tintas hipsométricas.
-- Ruta con calzada, banquinas y señalización; el terreno se nivela debajo y hay terraplenes sobre el agua.
-- Vegetación instanciada (montes, palmares, arbustos y rocas) y vehículos circulando.
+- **La ruta va en orden cronológico**: el primer proyecto es el km 0 y los demás siguen por fecha de creación (`since`).
+- **Cada categoría es un tipo de lugar**: los destacados son localidades (casas, tanque de agua, antena), los productos son estaciones de servicio y los trabajos para clientes, parajes con su local (la cancha tiene su cancha y el café, sus mesas).
+- **Señalización vial**: cartel verde de entrada con el nombre, una cifra y la fecha; mojón con el kilómetro; en las estaciones, el tótem y los surtidores muestran las tecnologías.
+- Terreno procedural con curvas de nivel, sombreado de relieve y tintas hipsométricas; vegetación instanciada y vehículos circulando.
 - HUD estilo SIG: norte, escala y coordenadas Gauss-Krüger bajo el cursor.
 - Calidad adaptable: nivel inicial según el equipo y ajuste en marcha si bajan los cuadros por segundo.
 
@@ -23,6 +24,7 @@ npm run preview
 index.html               maquetado (barra superior, hero, panel, HUD, overlays)
 src/main.js              UI: textos ES/EN, panel de proyecto, "Sobre mí", lista, rutas #/id
 src/terrain.js           escena 3D: terreno, ruta, vegetación, marcadores, cámara, HUD
+src/places.js            lugares sobre la ruta: localidades, estaciones, parajes, carteles y mojones
 src/data/projects.js     datos de los proyectos  <- editar acá
 src/style.css            estilos base
 src/relieve.css          estilos propios de esta versión (HUD)
@@ -31,9 +33,15 @@ public/img/              capturas de los proyectos
 
 ## Agregar o editar un proyecto
 
-1. Sumá un objeto en `src/data/projects.js` (`orbit`: 0 destacados, 1 productos, 2 clientes).
+1. Sumá un objeto en `src/data/projects.js`:
+   - `orbit`: 0 destacado (localidad), 1 producto (estación de servicio), 2 cliente (paraje).
+   - `since`: fecha de inicio (`AAAA-MM-DD`, el primer commit). Ordena la ruta y sale en el cartel.
+   - `sign`: la segunda línea del cartel de entrada, en `es` y `en`. Una cifra corta.
+   - `stack`: las primeras cuatro tecnologías van en los surtidores y el tótem de las estaciones.
 2. Poné sus capturas en `public/img/` y listalas en `images`.
-3. Ubicalo en el mapa en `SITES` dentro de `src/terrain.js` (posición y altura del cerro) y sumalo a `ROUTE` para que la ruta pase por él.
+3. Ubicalo en `SITES` dentro de `src/terrain.js` (posición y altura del cerro). La ruta une los lugares por fecha, así que tienen que quedar alrededor del centro en ese orden (sentido horario visto desde arriba) para que el camino no se cruce.
+
+Los lugares se arman en `src/places.js`.
 
 Cada proyecto tiene URL propia: `/#/sig-vial`, `/#/aion`, etc.
 

@@ -15,6 +15,8 @@ export const PROJECTS = [
     id: 'sig-vial',
     name: 'SIG Vial Chaco',
     orbit: 0,
+    since: '2026-06-10', // primer commit: ordena la ruta
+    sign: { es: '29.000 km · 103 consorcios', en: '29,000 km · 103 consortiums' }, // segunda línea del cartel de entrada
     color: '#3ddc97',
     status: { es: 'En uso diario', en: 'In daily use' },
     tagline: {
@@ -50,6 +52,8 @@ export const PROJECTS = [
     id: 'aion',
     name: 'Aión',
     orbit: 0,
+    since: '2026-10-15', // primer commit: ordena la ruta
+    sign: { es: 'IA · API de Anthropic', en: 'AI · Anthropic API' }, // segunda línea del cartel de entrada
     color: '#b18cff',
     status: { es: 'En producción · beta cerrada', en: 'In production · closed beta' },
     tagline: {
@@ -80,6 +84,8 @@ export const PROJECTS = [
     id: 'trazocad',
     name: 'TrazoCAD',
     orbit: 0,
+    since: '2026-10-18', // primer commit: ordena la ruta
+    sign: { es: '+180 comandos · DXF', en: '180+ commands · DXF' }, // segunda línea del cartel de entrada
     color: '#4fc3f7',
     status: { es: 'Producto propio · en desarrollo', en: 'Personal product · in development' },
     tagline: {
@@ -112,6 +118,8 @@ export const PROJECTS = [
     id: 'calcuobra',
     name: 'CalcuObra',
     orbit: 1,
+    since: '2026-10-08', // primer commit: ordena la ruta
+    sign: { es: 'Plano → cómputo → 3D', en: 'Plan → quantities → 3D' }, // segunda línea del cartel de entrada
     color: '#ffb547',
     status: { es: 'Online', en: 'Live' },
     tagline: {
@@ -145,6 +153,8 @@ export const PROJECTS = [
     id: 'equipos-viales',
     name: 'Equipos Viales',
     orbit: 1,
+    since: '2026-06-05', // primer commit: ordena la ruta
+    sign: { es: '5 zonas · inventario vial', en: '5 zones · road inventory' }, // segunda línea del cartel de entrada
     color: '#ff7a59',
     status: { es: 'Online', en: 'Live' },
     tagline: {
@@ -178,6 +188,8 @@ export const PROJECTS = [
     id: 'actas',
     name: 'Actas Guardaparques',
     orbit: 1,
+    since: '2026-11-05', // primer commit: ordena la ruta
+    sign: { es: 'Funciona sin señal', en: 'Works with no signal' }, // segunda línea del cartel de entrada
     color: '#8bc34a',
     status: { es: 'v0.3 · online', en: 'v0.3 · live' },
     tagline: {
@@ -213,6 +225,8 @@ export const PROJECTS = [
     id: 'racha',
     name: 'Racha',
     orbit: 1,
+    since: '2026-06-15', // primer commit: ordena la ruta
+    sign: { es: 'App Android · 3 temas', en: 'Android app · 3 themes' }, // segunda línea del cartel de entrada
     color: '#ff5d8f',
     status: { es: 'App Android', en: 'Android app' },
     tagline: {
@@ -243,6 +257,8 @@ export const PROJECTS = [
     id: 'cancha',
     name: 'Gestión de Cancha',
     orbit: 2,
+    since: '2026-10-30', // primer commit: ordena la ruta
+    sign: { es: 'Turnos · buffet · caja', en: 'Bookings · snack bar · till' }, // segunda línea del cartel de entrada
     color: '#2ec4b6',
     status: { es: 'Proyecto para cliente', en: 'Client project' },
     tagline: {
@@ -275,6 +291,8 @@ export const PROJECTS = [
     id: 'tropico',
     name: 'Trópico Café',
     orbit: 2,
+    since: '2026-11-04', // primer commit: ordena la ruta
+    sign: { es: 'Recorrido 3D', en: '3D walkthrough' }, // segunda línea del cartel de entrada
     color: '#e8734a',
     status: { es: 'Proyecto para cliente', en: 'Client project' },
     tagline: {

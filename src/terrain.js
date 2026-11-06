@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { MapControls } from 'three/addons/controls/MapControls.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { buildPlaces } from './places.js';
 
 const SIZE = 130; // lado del terreno en unidades (1 unidad = 100 m en el HUD)
 const SEG = 260;
@@ -10,17 +11,19 @@ const BG = new THREE.Color('#060a10');
 const MARKER_SCALE = 0.6; // tamaño de los marcadores de proyecto (1 = tamaño original)
 
 // Ubicación de cada proyecto en el mapa (x, z) y altura de su cerro.
-// Destacados al centro y más altos; productos al este; clientes al oeste.
+// La ruta los recorre en orden de creación (campo `since` de projects.js), así que van
+// alrededor del centro en ese mismo orden, en sentido horario visto desde arriba: el camino
+// no se cruza. Los destacados son localidades más altas.
 const SITES = {
-  'sig-vial': { x: -5, z: 3, h: 13 },
-  aion: { x: 9, z: -11, h: 11.5 },
-  trazocad: { x: 7, z: 14, h: 11 },
-  calcuobra: { x: 27, z: 2, h: 8.5 },
-  'equipos-viales': { x: 22, z: 22, h: 8 },
-  actas: { x: 29, z: -17, h: 7.5 },
-  racha: { x: 14, z: -29, h: 7 },
-  cancha: { x: -27, z: -13, h: 8 },
-  tropico: { x: -24, z: 19, h: 7.5 },
+  'equipos-viales': { x: 23, z: 18, h: 8 },
+  'sig-vial': { x: 6, z: 14, h: 12.5 },
+  racha: { x: -14, z: 18, h: 7 },
+  calcuobra: { x: -28, z: 4, h: 8.5 },
+  aion: { x: -20, z: -14, h: 11 },
+  trazocad: { x: 2, z: -22, h: 11 },
+  cancha: { x: 20, z: -24, h: 7.5 },
+  tropico: { x: 31, z: -11, h: 7.5 },
+  actas: { x: 32, z: 4, h: 7.5 },
 };
 
 // ---------- Función de altura (la misma para la malla, los marcadores, el camino y el HUD) ----------
@@ -210,7 +213,7 @@ function pickQuality() {
 // Cede el control al navegador un cuadro, para que el cargador siga animado entre etapas pesadas.
 const yieldFrame = () => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
 
-export async function createTerrain({ canvas, projects, reducedMotion, onSelect, onHover, onFrame }) {
+export async function createTerrain({ canvas, projects, reducedMotion, lang = 'es', onSelect, onHover, onFrame }) {
   const quality = pickQuality();
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: quality.antialias, powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, quality.maxDpr));
@@ -237,9 +240,10 @@ export async function createTerrain({ canvas, projects, reducedMotion, onSelect,
   const rawHeight = makeHeight(sites);
 
   // ---------- Trazado de la ruta ----------
-  // Recorrido fijo que pasa por todos los proyectos sin cruzarse. El perfil longitudinal se suaviza
-  // (pendientes razonables), nunca baja del agua (terraplén) y el terreno se nivela debajo.
-  const ROUTE = ['tropico', 'sig-vial', 'trazocad', 'equipos-viales', 'calcuobra', 'actas', 'racha', 'aion', 'cancha'];
+  // La ruta pasa por todos los proyectos en orden de creación: el primero es el km 0. El perfil
+  // longitudinal se suaviza (pendientes razonables), nunca baja del agua (terraplén) y el terreno
+  // se nivela debajo.
+  const ROUTE = [...projects].sort((a, b) => (a.since || '').localeCompare(b.since || '')).map((p) => p.id);
   const routeSites = ROUTE.map((id) => sites.find((s) => s.id === id)).filter(Boolean);
   const curve = new THREE.CatmullRomCurve3(routeSites.map((s) => new THREE.Vector3(s.x, 0, s.z)), true, 'centripetal');
   const ROAD_W = 0.55; // semiancho de calzada
@@ -436,7 +440,7 @@ export async function createTerrain({ canvas, projects, reducedMotion, onSelect,
       if (h < WATER + 0.12) continue;
       const road = nearestRoad(x, z);
       if (road && road.d < ROAD_W + SHOULDER + 0.45) continue;
-      if (sites.some((s) => Math.hypot(x - s.x, z - s.z) < 4.6)) continue;
+      if (sites.some((s) => Math.hypot(x - s.x, z - s.z) < 6.2)) continue; // lugar para el pueblo, la estación o el local
       const slope = Math.hypot(height(x + 0.4, z) - height(x - 0.4, z), height(x, z + 0.4) - height(x, z - 0.4)) / 0.8;
       const forest = fbm(x * 0.07 + 100, z * 0.07 - 50, 3);
       const edgeFade = 1 - smooth(0.8, 1, rr / R); // menos densidad hacia el borde del mapa
@@ -526,6 +530,28 @@ export async function createTerrain({ canvas, projects, reducedMotion, onSelect,
     }
   }
 
+  // ---------- Lugares sobre la ruta: localidades, estaciones de servicio y parajes ----------
+  if (document.fonts?.load) {
+    // los carteles se dibujan en un canvas: esperar la tipografía, pero sin trabar la carga
+    await Promise.race([Promise.all(['700 64px "Space Grotesk"', '500 40px "Space Grotesk"'].map((f) => document.fonts.load(f))), new Promise((r) => setTimeout(r, 1500))]).catch(() => {});
+  }
+  const places = buildPlaces({ projects, sites: routeSites, curve, height, water: WATER, roadHalf: ROAD_W + SHOULDER, lang, quality });
+  scene.add(places.root);
+
+  // punto blanco del pin: un círculo nítido
+  const dotTexture = (() => {
+    const c = document.createElement('canvas');
+    c.width = c.height = 64;
+    const g = c.getContext('2d');
+    g.fillStyle = '#fff';
+    g.beginPath();
+    g.arc(32, 32, 28, 0, Math.PI * 2);
+    g.fill();
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  })();
+
   // ---------- Marcadores ----------
   const markers = projects.map((proj) => {
     const s = SITES[proj.id] || { x: 0, z: 0 };
@@ -542,15 +568,14 @@ export async function createTerrain({ canvas, projects, reducedMotion, onSelect,
     );
     group.add(beam);
 
-    // cabeza: octaedro de color con aristas blancas (contrasta también sobre el verde de los montes)
-    const headGeo = new THREE.OctahedronGeometry(0.95, 0);
+    // cabeza: un pin de mapa del color del proyecto, con el punto blanco al medio
+    const headGeo = mergeGeometries([new THREE.SphereGeometry(0.8, 20, 14), new THREE.ConeGeometry(0.69, 1.35, 20, 1, true).rotateX(Math.PI).translate(0, -0.95, 0)]);
     const head = new THREE.Mesh(headGeo, new THREE.MeshBasicMaterial({ color }));
-    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(headGeo), new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9 }));
+    const edges = new THREE.Sprite(new THREE.SpriteMaterial({ map: dotTexture, color: 0xffffff, transparent: true, opacity: 0.9, depthWrite: false }));
+    edges.scale.setScalar(0.85);
+    edges.renderOrder = 11;
     head.add(edges);
-    const shell = new THREE.Mesh(
-      new THREE.OctahedronGeometry(1.5, 0),
-      new THREE.MeshBasicMaterial({ color, wireframe: true, transparent: true, opacity: 0.4 })
-    );
+    const shell = new THREE.Mesh(new THREE.TorusGeometry(1.15, 0.05, 6, 48).rotateX(Math.PI / 2).translate(0, -1.85, 0), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.4 }));
     // halo que se ve a través de árboles y cerros, para no perder nunca un proyecto de vista
     const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture('rgba(255,255,255,0.95)', `rgba(${(color.r * 255) | 0},${(color.g * 255) | 0},${(color.b * 255) | 0},0.45)`), color, transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending }));
     glow.scale.setScalar(6.5);
@@ -844,6 +869,9 @@ export async function createTerrain({ canvas, projects, reducedMotion, onSelect,
       lastVegRise = rise;
     }
     moveCars(uTime.value, uRise.value);
+    places.root.scale.y = Math.max(uRise.value, 0.001);
+    places.root.visible = uRise.value > 0.05;
+    places.update(uTime.value);
 
     for (const m of markers) {
       const g = m.ground * rise;
@@ -957,6 +985,7 @@ export async function createTerrain({ canvas, projects, reducedMotion, onSelect,
   });
 
   return {
+    setLang: (l) => places.setLang(l),
     focus,
     unfocus,
     setFilter,

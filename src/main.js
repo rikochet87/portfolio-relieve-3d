@@ -361,6 +361,7 @@ document.addEventListener('click', (e) => {
     lang = lang === 'es' ? 'en' : 'es';
     storage('lang', lang);
     applyLang();
+    galaxy?.setLang?.(lang);
   }
 });
 
@@ -407,6 +408,7 @@ async function start() {
       canvas: $('#scene'),
       projects: PROJECTS,
       reducedMotion,
+      lang,
       onSelect: (id) => (id ? select(id) : deselect()),
       onHover,
       onFrame,
