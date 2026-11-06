@@ -13,16 +13,17 @@ const MARKER_SCALE = 0.6; // tamaño de los marcadores de proyecto (1 = tamaño 
 // Ubicación de cada proyecto en el mapa (x, z) y altura de su cerro.
 // La ruta los recorre en orden de creación (campo `since` de projects.js), así que van
 // alrededor del centro en ese mismo orden, en sentido horario visto desde arriba: el camino
-// no se cruza. Los destacados son localidades más altas.
+// no se cruza. Cada lugar queda a 9 o más de un cauce: la ruta necesita espacio entre el lugar y
+// el puente para doblar suave.
 const SITES = {
   'equipos-viales': { x: 23, z: 18, h: 8 },
-  'sig-vial': { x: 6, z: 14, h: 12.5 },
+  'sig-vial': { x: 1, z: 12, h: 12.5 },
   racha: { x: -14, z: 18, h: 7 },
-  calcuobra: { x: -28, z: 4, h: 8.5 },
+  calcuobra: { x: -29, z: 6, h: 8.5 },
   aion: { x: -20, z: -14, h: 11 },
   trazocad: { x: 2, z: -22, h: 11 },
-  cancha: { x: 20, z: -24, h: 7.5 },
-  tropico: { x: 31, z: -11, h: 7.5 },
+  cancha: { x: 18, z: -26, h: 7.5 },
+  tropico: { x: 33, z: -7, h: 7.5 },
   actas: { x: 32, z: 4, h: 7.5 },
 };
 
@@ -357,19 +358,32 @@ export async function createTerrain({ canvas, projects, reducedMotion, lang = 'e
     }
     if (run) crossings.push(run);
     for (const c of crossings) {
+      // dirección del cruce: la que traía la ruta, corrida un poco hacia la perpendicular al cauce.
+      // Forzarla perpendicular obligaba a doblar de golpe antes y después del puente.
+      const a = firstPass.getPoint((i + Math.max(0, c.k - 12) / STEPS) / nSites);
+      const b = firstPass.getPoint((i + Math.min(STEPS, c.k + 12) / STEPS) / nSites);
+      let dx = b.x - a.x;
+      let dz = b.z - a.z;
+      const dl = Math.hypot(dx, dz) || 1;
+      dx /= dl;
+      dz /= dl;
       const rt = rivers.curves[c.ri].getTangentAt(c.u);
-      let nx = -rt.z;
-      let nz = rt.x;
-      const a = firstPass.getPoint((i + Math.max(0, c.k - 5) / STEPS) / nSites);
-      const b = firstPass.getPoint((i + Math.min(STEPS, c.k + 5) / STEPS) / nSites);
-      if (nx * (b.x - a.x) + nz * (b.z - a.z) < 0) {
-        nx = -nx;
-        nz = -nz;
+      let px = -rt.z;
+      let pz = rt.x;
+      if (px * dx + pz * dz < 0) {
+        px = -px;
+        pz = -pz;
       }
+      let nx = dx * 0.7 + px * 0.3;
+      let nz = dz * 0.7 + pz * 0.3;
+      const nl = Math.hypot(nx, nz) || 1;
+      nx /= nl;
+      nz /= nl;
       // el punto del cauce más cercano: el puente queda centrado sobre el agua
       const rp = rivers.curves[c.ri].getPointAt(c.u);
       const { w, valley } = c.river;
-      for (const o of [-(w + valley + 1.8), -(w + valley * 0.85), w + valley * 0.85, w + valley + 1.8]) ctrl.push(new THREE.Vector3(rp.x + nx * o, 0, rp.z + nz * o));
+      const skew = 1 / Math.max(0.5, Math.abs(nx * px + nz * pz)); // un cruce oblicuo es más largo
+      for (const o of [-(w + valley + 1.3) * skew, -(w + valley * 0.85) * skew, (w + valley * 0.85) * skew, (w + valley + 1.3) * skew]) ctrl.push(new THREE.Vector3(rp.x + nx * o, 0, rp.z + nz * o));
     }
   }
   const curve = new THREE.CatmullRomCurve3(ctrl, true, 'centripetal');
@@ -812,7 +826,7 @@ export async function createTerrain({ canvas, projects, reducedMotion, lang = 'e
     // los carteles se dibujan en un canvas: esperar la tipografía, pero sin trabar la carga
     await Promise.race([Promise.all(['700 64px "Space Grotesk"', '500 40px "Space Grotesk"'].map((f) => document.fonts.load(f))), new Promise((r) => setTimeout(r, 1500))]).catch(() => {});
   }
-  const places = buildPlaces({ projects, sites: routeSites, stops, curve, height, water: WATER, roadHalf: ROAD_W + SHOULDER, lang, quality });
+  const places = buildPlaces({ projects, sites: routeSites, stops, curve, roadDist: (x, z) => nearestRoad(x, z)?.d ?? Infinity, height, water: WATER, roadHalf: ROAD_W + SHOULDER, lang, quality });
   scene.add(places.root);
 
   // punto blanco del pin: un círculo nítido

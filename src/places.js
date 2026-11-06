@@ -201,7 +201,7 @@ const gableRoof = (() => {
 })();
 for (const g of [unitBox, unitCyl, unitCone, hipRoof, gableRoof]) g.deleteAttribute('uv');
 
-export function buildPlaces({ projects, sites, stops, curve, height, water, roadHalf, lang, quality }) {
+export function buildPlaces({ projects, sites, stops, curve, roadDist, height, water, roadHalf, lang, quality }) {
   const root = new THREE.Group();
   const solids = [];
   const glows = [];
@@ -297,6 +297,15 @@ export function buildPlaces({ projects, sites, stops, curve, height, water, road
       const c = at(u, v);
       return groundAt(c.x, c.z) > water + 0.15;
     };
+    // ¿una planta de w × d en (u, v) queda lejos de la ruta real? La ruta curva: no alcanza con
+    // mirar la distancia a la tangente del lugar.
+    const clearOfRoad = (u, v, w, d, gap = 0.3) => {
+      for (const [du, dv] of [[0, 0], [-d / 2, -w / 2], [d / 2, -w / 2], [-d / 2, w / 2], [d / 2, w / 2]]) {
+        const q = at(u + du, v + dv);
+        if (roadDist(q.x, q.z) < roadHalf + gap) return false;
+      }
+      return true;
+    };
 
     // ---------- Cartel verde de entrada, antes de llegar ----------
     {
@@ -359,6 +368,7 @@ export function buildPlaces({ projects, sites, stops, curve, height, water, road
         if (!buildable(u, v)) continue;
         const w = 0.55 + rnd() * 0.25;
         const d = 0.5 + rnd() * 0.35;
+        if (!clearOfRoad(u, v, w * 1.15, d * 1.15)) continue;
         const h = 0.36 + rnd() * 0.16;
         const { top, c } = block(solids, unitBox, walls[Math.floor(rnd() * walls.length)], u, v, w, h, d);
         // techo a cuatro aguas o a dos aguas
@@ -377,9 +387,9 @@ export function buildPlaces({ projects, sites, stops, curve, height, water, road
         placed++;
       }
       // tanque de agua elevado
+      const freeSpot = (cands, size) => cands.find(([u, v]) => clearOfRoad(u, v, size, size, 0.5) && buildable(u, v)) || cands[0];
       {
-        const u = 2.2;
-        const v = -3.7;
+        const [u, v] = freeSpot([[2.2, -3.7], [-2.6, -3.9], [3.2, 3.9], [-3.6, 2.8]], 0.8);
         const c = at(u, v);
         const gy = groundAt(c.x, c.z);
         for (const [a, b] of [[-0.22, -0.22], [0.22, -0.22], [-0.22, 0.22], [0.22, 0.22]]) {
@@ -392,8 +402,7 @@ export function buildPlaces({ projects, sites, stops, curve, height, water, road
       }
       // antena con baliza roja
       {
-        const u = -2.4;
-        const v = 3.9;
+        const [u, v] = freeSpot([[-2.4, 3.9], [2.6, 4.1], [-3.4, -3.6], [0, 4.4]], 0.5);
         const c = at(u, v);
         const gy = groundAt(c.x, c.z);
         piece(solids, unitCyl, '#b8bcc2', u, v, 1.4, 0.06, 2.8, 0.06, 0, gy);
@@ -402,7 +411,8 @@ export function buildPlaces({ projects, sites, stops, curve, height, water, road
       }
     } else if (p.orbit === 1) {
       // ---------- Estación de servicio ----------
-      const v0 = roadHalf + 1.25;
+      let v0 = roadHalf + 1.25;
+      while (v0 < roadHalf + 4 && !clearOfRoad(0, v0 + 0.5, 2.6, 2.4, 0.35)) v0 += 0.4;
       const c0 = at(0, v0);
       const gy = groundAt(c0.x, c0.z);
       // playa de hormigón
@@ -437,7 +447,8 @@ export function buildPlaces({ projects, sites, stops, curve, height, water, road
       // tótem con el nombre, antes de entrar
       {
         const u = -1.55;
-        const v = roadHalf + 0.6;
+        let v = roadHalf + 0.6;
+        while (v < roadHalf + 2.5 && !clearOfRoad(u, v, 0.7, 0.2, 0.15)) v += 0.25;
         const c = at(u, v);
         const g0 = groundAt(c.x, c.z);
         piece(solids, unitBox, '#4a4f57', u, v, 0.55, 0.08, 1.1, 0.08, 0, g0);
@@ -449,7 +460,8 @@ export function buildPlaces({ projects, sites, stops, curve, height, water, road
       }
     } else {
       // ---------- Paraje: un local al costado del camino ----------
-      const sv = roadHalf + 1.5;
+      let sv = roadHalf + 1.5;
+      while (sv < roadHalf + 4 && !clearOfRoad(0, sv - 0.2, 1.4, 1.8, 0.3)) sv += 0.4;
       const isCafe = p.id === 'tropico';
       const wall = isCafe ? '#e8dcc6' : '#d6d0c4';
       const { top, c } = block(solids, unitBox, wall, 0, sv, 0.85, 0.5, 1.6);
@@ -478,7 +490,8 @@ export function buildPlaces({ projects, sites, stops, curve, height, water, road
       }
       if (p.id === 'cancha') {
         // la cancha de fútbol 5, del otro lado de la ruta, con sus torres de luz
-        const pv = -(roadHalf + 2.3);
+        let pv = -(roadHalf + 2.3);
+        while (pv > -(roadHalf + 5) && !clearOfRoad(0, pv, 1.8, 2.8, 0.3)) pv -= 0.4;
         const pc = at(0, pv);
         // plana sobre la ladera: a la altura de su esquina más alta, con un terraplén debajo
         let hiG = -Infinity;
