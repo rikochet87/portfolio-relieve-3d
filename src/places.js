@@ -276,11 +276,12 @@ for (const g of [unitBox, unitCyl, unitCone, hipRoof, gableRoof]) g.deleteAttrib
 // beige y chaleco gris oscuro con el escudo dorado en el pecho.
 const UNIF = { sombrero: '#5f5c3f', pantalon: '#6f7358', camisa: '#d6cbb4', chaleco: '#33383f', escudo: '#d4a62a', botas: '#4a3628' };
 
-// Un guardaparque con piernas y brazos que se mueven: piezas propias (no van en la malla única).
-function makeRanger(scale) {
+// Una persona con piernas y brazos que se mueven: piezas propias (no van en la malla única).
+// `look` trae los colores; sin sombrero, chaleco o escudo, esas piezas no van. Por defecto, el
+// uniforme de guardaparque.
+function makePerson(scale, look = UNIF) {
   const mat = (c) => new THREE.MeshLambertMaterial({ color: c, flatShading: true });
-  const M = Object.fromEntries(Object.entries(UNIF).map(([k, c]) => [k, mat(c)]));
-  const piel = mat('#c99a72');
+  const piel = mat(look.piel || '#c99a72');
   const box = (w, h, d, m, x, y, z, parent) => {
     const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m);
     b.position.set(x, y, z);
@@ -288,35 +289,54 @@ function makeRanger(scale) {
     return b;
   };
   const g = new THREE.Group();
-  // piernas, colgadas de la cadera
+  // piernas, colgadas de la cadera (con pantalón corto, la pierna es de piel y lleva medias)
   const legs = [-1, 1].map((sd) => {
     const hip = new THREE.Group();
     hip.position.set(sd * 0.013, 0.08, 0);
-    box(0.018, 0.075, 0.022, M.pantalon, 0, -0.037, 0, hip);
-    box(0.02, 0.012, 0.03, M.botas, 0, -0.074, 0.004, hip);
+    if (look.corto) {
+      box(0.019, 0.03, 0.023, mat(look.pantalon), 0, -0.014, 0, hip);
+      box(0.016, 0.047, 0.019, mat(look.medias || look.camisa), 0, -0.05, 0, hip);
+    } else box(0.018, 0.075, 0.022, mat(look.pantalon), 0, -0.037, 0, hip);
+    box(0.02, 0.012, 0.03, mat(look.botas), 0, -0.074, 0.004, hip);
     g.add(hip);
     return hip;
   });
-  box(0.05, 0.075, 0.03, M.camisa, 0, 0.118, 0, g); // torso con la camisa
-  box(0.054, 0.068, 0.034, M.chaleco, 0, 0.12, 0, g); // chaleco encima
-  box(0.01, 0.01, 0.002, M.escudo, -0.012, 0.135, 0.018, g); // escudo en el pecho
-  // brazos con las mangas de la camisa, colgados del hombro
+  box(0.05, 0.075, 0.03, mat(look.camisa), 0, 0.118, 0, g); // torso
+  if (look.chaleco) box(0.054, 0.068, 0.034, mat(look.chaleco), 0, 0.12, 0, g); // chaleco encima
+  if (look.escudo) box(0.01, 0.01, 0.002, mat(look.escudo), -0.012, 0.135, 0.018, g); // escudo en el pecho
+  // brazos, colgados del hombro
   const arms = [-1, 1].map((sd) => {
     const sh = new THREE.Group();
     sh.position.set(sd * 0.034, 0.15, 0);
-    box(0.014, 0.065, 0.016, M.camisa, 0, -0.03, 0, sh);
+    box(0.014, 0.065, 0.016, look.corto ? piel : mat(look.camisa), 0, -0.03, 0, sh);
     box(0.012, 0.012, 0.014, piel, 0, -0.068, 0, sh);
     g.add(sh);
     return sh;
   });
   box(0.03, 0.032, 0.03, piel, 0, 0.172, 0, g); // cabeza
-  const ala = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.036, 0.004, 14), M.sombrero);
-  ala.position.y = 0.19;
-  const copa = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.019, 0.02, 10), M.sombrero);
-  copa.position.y = 0.2;
-  g.add(ala, copa);
+  if (look.pelo) box(0.032, 0.012, 0.032, mat(look.pelo), 0, 0.192, -0.002, g);
+  if (look.sombrero) {
+    const ala = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.036, 0.004, 14), mat(look.sombrero));
+    ala.position.y = 0.19;
+    const copa = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.019, 0.02, 10), mat(look.sombrero));
+    copa.position.y = 0.2;
+    g.add(ala, copa);
+  }
   g.scale.setScalar(scale);
   return { g, legs, arms };
+}
+
+// Cartel del buffet de la cancha.
+function drawBuffet(g, w, h) {
+  g.fillStyle = '#16233a';
+  g.fillRect(0, 0, w, h);
+  g.fillStyle = '#2ec4b6';
+  g.fillRect(0, h - 10, w, 10);
+  g.fillStyle = '#ffffff';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  fitText(g, 'BUFFET', w - 30, h * 0.62, 800);
+  g.fillText('BUFFET', w / 2, h / 2 - 3);
 }
 
 export function buildPlaces({ projects, sites, stops, curve, roadDist, height, water, roadHalf, lang, quality }) {
@@ -326,6 +346,7 @@ export function buildPlaces({ projects, sites, stops, curve, roadDist, height, w
   const textMeshes = [];
   const blinkers = [];
   const guardaparques = []; // recorridos de los guardaparques que caminan
+  const partidos = []; // canchas con jugadores
   const textures = [];
 
   const tmpM = new THREE.Matrix4();
@@ -542,6 +563,35 @@ export function buildPlaces({ projects, sites, stops, curve, roadDist, height, w
       }
     };
 
+    // una persona quieta, en la malla única (las que se mueven son makePerson)
+    const PIEL = ['#e0b48a', '#c58c5f', '#8d5a3b', '#f0c9a0'];
+    const ROPA = ['#d64545', '#3a7bd5', '#f2c230', '#2e9e6a', '#e8692e', '#8e5bd1', '#ececec'];
+    const K = 1.5; // un poco más grandes que a escala, para que se vean desde arriba
+    const persona = (u, v, { sentada = false, ropa, mochila = false, guarda = false } = {}) => {
+      if (!buildable(u, v) || !clearOfRoad(u, v, 0.1, 0.1, 0.1)) return;
+      const q = at(u, v);
+      const gq = groundAt(q.x, q.z);
+      const col = guarda ? UNIF.chaleco : ropa || ROPA[Math.floor(rnd() * ROPA.length)];
+      const piel = PIEL[Math.floor(rnd() * PIEL.length)];
+      const giro = rnd() * Math.PI * 2;
+      const pz = (geo, c, du, dv, y, w, h, d) => piece(solids, geo, c, u + du, v + dv, y * K, w * K, h * K, d * K, giro, gq);
+      if (sentada) {
+        pz(unitBox, '#2f3a4a', 0, 0, 0.025, 0.045, 0.03, 0.06);
+        pz(unitBox, col, 0, 0, 0.075, 0.05, 0.07, 0.04);
+        pz(unitBox, piel, 0, 0, 0.135, 0.035, 0.04, 0.035);
+      } else {
+        pz(unitBox, guarda ? UNIF.pantalon : '#2f3a4a', 0, 0, 0.04, 0.04, 0.08, 0.03);
+        pz(unitBox, col, 0, 0, 0.115, 0.05, 0.075, 0.035);
+        pz(unitBox, piel, 0, 0, 0.175, 0.035, 0.04, 0.035);
+        if (guarda) {
+          pz(unitBox, UNIF.camisa, 0, 0, 0.11, 0.062, 0.06, 0.026); // mangas de la camisa
+          pz(unitCyl, UNIF.sombrero, 0, 0, 0.196, 0.075, 0.01, 0.075); // ala del sombrero
+          pz(unitCyl, UNIF.sombrero, 0, 0, 0.21, 0.04, 0.025, 0.04); // copa
+        }
+        // la mochila, detrás: el frente de la persona es (cos giro, −sin giro) en (u, v)
+        if (mochila) pz(unitBox, '#5a4a3a', -Math.cos(giro) * 0.03 * K, Math.sin(giro) * 0.03 * K, 0.12, 0.04, 0.06, 0.03);
+      }
+    };
     if (kind === 'localidad' || kind === 'vialidad') {
       // ---------- Localidad ----------
       // En 'vialidad' va sólo el predio (más abajo): sin casas ni tanque de agua.
@@ -942,34 +992,6 @@ export function buildPlaces({ projects, sites, stops, curve, roadDist, height, w
         }
       }
       // gente: acampando alrededor del fogón, entre las carpas y paseando por el sendero
-      const PIEL = ['#e0b48a', '#c58c5f', '#8d5a3b', '#f0c9a0'];
-      const ROPA = ['#d64545', '#3a7bd5', '#f2c230', '#2e9e6a', '#e8692e', '#8e5bd1', '#ececec'];
-      const K = 1.5; // un poco más grandes que a escala, para que se vean desde arriba
-      const persona = (u, v, { sentada = false, ropa, mochila = false, guarda = false } = {}) => {
-        if (!buildable(u, v) || !clearOfRoad(u, v, 0.1, 0.1, 0.1)) return;
-        const q = at(u, v);
-        const gq = groundAt(q.x, q.z);
-        const col = guarda ? UNIF.chaleco : ropa || ROPA[Math.floor(rnd() * ROPA.length)];
-        const piel = PIEL[Math.floor(rnd() * PIEL.length)];
-        const giro = rnd() * Math.PI * 2;
-        const pz = (geo, c, du, dv, y, w, h, d) => piece(solids, geo, c, u + du, v + dv, y * K, w * K, h * K, d * K, giro, gq);
-        if (sentada) {
-          pz(unitBox, '#2f3a4a', 0, 0, 0.025, 0.045, 0.03, 0.06);
-          pz(unitBox, col, 0, 0, 0.075, 0.05, 0.07, 0.04);
-          pz(unitBox, piel, 0, 0, 0.135, 0.035, 0.04, 0.035);
-        } else {
-          pz(unitBox, guarda ? UNIF.pantalon : '#2f3a4a', 0, 0, 0.04, 0.04, 0.08, 0.03);
-          pz(unitBox, col, 0, 0, 0.115, 0.05, 0.075, 0.035);
-          pz(unitBox, piel, 0, 0, 0.175, 0.035, 0.04, 0.035);
-          if (guarda) {
-            pz(unitBox, UNIF.camisa, 0, 0, 0.11, 0.062, 0.06, 0.026); // mangas de la camisa
-            pz(unitCyl, UNIF.sombrero, 0, 0, 0.196, 0.075, 0.01, 0.075); // ala del sombrero
-            pz(unitCyl, UNIF.sombrero, 0, 0, 0.21, 0.04, 0.025, 0.04); // copa
-          }
-          // la mochila, detrás: el frente de la persona es (cos giro, −sin giro) en (u, v)
-          if (mochila) pz(unitBox, '#5a4a3a', -Math.cos(giro) * 0.03 * K, Math.sin(giro) * 0.03 * K, 0.12, 0.04, 0.06, 0.03);
-        }
-      };
       // guardaparque en la boletería
       persona(0.5, v0 + 0.82, { guarda: true });
       // alrededor del fogón (en v0 + 4.0)
@@ -1007,24 +1029,26 @@ export function buildPlaces({ projects, sites, stops, curve, roadDist, height, w
         tree(u + (rnd() - 0.5) * 0.4, v0 + v + (rnd() - 0.5) * 0.4, 0.85 + rnd() * 0.45);
       }
     } else {
-      // ---------- Paraje: un local al costado del camino ----------
-      let sv = roadHalf + 1.5;
-      while (sv < roadHalf + 4 && !clearOfRoad(0, sv - 0.2, 1.4, 1.8, 0.3)) sv += 0.4;
-      const wall = '#d6d0c4';
-      const { top, c } = block(solids, unitBox, wall, 0, sv, 0.85, 0.5, 1.6);
-      const roofCol = '#6d7378';
-      bake(solids, gableRoof, roofCol, new THREE.Vector3(c.x, top + 0.13, c.z), rot, new THREE.Vector3(1.0, 0.26, 1.75));
-      const gy = groundAt(c.x, c.z);
-      // cartel sobre la fachada
-      const fp = at(0, sv - 0.44);
-      fp.y = top - 0.12;
-      const tex = canvasTexture(512, 128, drawBrand);
-      textures.push(tex);
-      tex.userData.redraw(p);
-      piece(solids, unitBox, '#2b2f36', 0, sv - 0.43, top - gy - 0.12, 0.02, 0.2, 1.24, 0, gy);
-      textPlane(tex, fp, side.clone().negate(), 1.2, 0.18, false);
-      // vidriera encendida
-      piece(glows, unitBox, '#ffd9a0', 0, sv - 0.43, 0.2, 0.01, 0.22, 0.9, 0, gy);
+      // ---------- Paraje: un local al costado del camino (la cancha tiene su buffet) ----------
+      if (p.id !== 'cancha') {
+        let sv = roadHalf + 1.5;
+        while (sv < roadHalf + 4 && !clearOfRoad(0, sv - 0.2, 1.4, 1.8, 0.3)) sv += 0.4;
+        const wall = '#d6d0c4';
+        const { top, c } = block(solids, unitBox, wall, 0, sv, 0.85, 0.5, 1.6);
+        const roofCol = '#6d7378';
+        bake(solids, gableRoof, roofCol, new THREE.Vector3(c.x, top + 0.13, c.z), rot, new THREE.Vector3(1.0, 0.26, 1.75));
+        const gy = groundAt(c.x, c.z);
+        // cartel sobre la fachada
+        const fp = at(0, sv - 0.44);
+        fp.y = top - 0.12;
+        const tex = canvasTexture(512, 128, drawBrand);
+        textures.push(tex);
+        tex.userData.redraw(p);
+        piece(solids, unitBox, '#2b2f36', 0, sv - 0.43, top - gy - 0.12, 0.02, 0.2, 1.24, 0, gy);
+        textPlane(tex, fp, side.clone().negate(), 1.2, 0.18, false);
+        // vidriera encendida
+        piece(glows, unitBox, '#ffd9a0', 0, sv - 0.43, 0.2, 0.01, 0.22, 0.9, 0, gy);
+      }
       if (p.id === 'cancha') {
         // la cancha de fútbol 5, del otro lado de la ruta, con sus torres de luz
         let pv = -(roadHalf + 2.3);
@@ -1056,15 +1080,78 @@ export function buildPlaces({ projects, sites, stops, curve, roadDist, height, w
           bake(solids, unitCyl, '#aeb3b9', q, 0, new THREE.Vector3(0.04, 1.2, 0.04));
           blinkers.push({ pos: new THREE.Vector3(q.x, py + 1.22, q.z), color: '#fff8e6', phase: 0, size: 0.7, steady: true });
         }
+        // el buffet, al lado de la cancha, con el mostrador mirando al juego
+        const BU = 2.25;
+        {
+          const { top, c: bc } = block(solids, unitBox, '#e6e1d6', BU, pv, 1.25, 0.42, 0.7);
+          const gb = groundAt(bc.x, bc.z);
+          // techo plano con alero hacia la cancha, sobre dos postes
+          piece(solids, unitBox, '#2a3b55', BU - 0.15, pv, top - gb + 0.02, 1.45, 0.04, 1.05, 0, gb);
+          for (const dv of [-0.6, 0.6]) piece(solids, unitBox, '#2a3b55', BU - 0.62, pv + dv, (top - gb) / 2, 0.035, top - gb, 0.035, 0, gb);
+          // mostrador con la luz de adentro y el cartel arriba
+          piece(glows, unitBox, '#ffdf9e', BU - 0.356, pv, 0.24, 0.8, 0.14, 0.01, 0, gb);
+          piece(solids, unitBox, '#c9c2b3', BU - 0.4, pv, 0.13, 0.84, 0.03, 0.08, 0, gb);
+          const ftex = canvasTexture(512, 128, drawBuffet);
+          textures.push(ftex);
+          ftex.userData.redraw();
+          const fq = at(BU - 0.357, pv);
+          textPlane(ftex, new THREE.Vector3(fq.x, gb + 0.36, fq.z), tan.clone().negate(), 0.7, 0.13, false, 0.004);
+          // heladera de bebidas y mesas de plástico blancas bajo el alero
+          piece(solids, unitBox, '#c0392b', BU - 0.42, pv + 0.52, 0.12, 0.14, 0.24, 0.08, 0, gb);
+          for (const dv of [-0.35, 0.3]) {
+            piece(solids, unitCyl, '#f2f2f2', BU - 0.62, pv + dv, 0.1, 0.17, 0.015, 0.17, 0, gb);
+            piece(solids, unitCyl, '#dcdcdc', BU - 0.62, pv + dv, 0.05, 0.02, 0.1, 0.02, 0, gb);
+          }
+        }
+        // el asado, detrás del buffet: la parrilla con las brasas y gente alrededor
+        {
+          const AU = BU + 0.75;
+          const AV = pv - 0.25;
+          const q = at(AU, AV);
+          const ga = groundAt(q.x, q.z);
+          piece(solids, unitBox, '#8a4b32', AU, AV, 0.09, 0.3, 0.18, 0.18, 0, ga); // base de ladrillo
+          piece(solids, unitBox, '#2b2b2b', AU, AV, 0.19, 0.28, 0.02, 0.16, 0, ga); // parrilla
+          piece(solids, unitBox, '#7a3a26', AU, AV, 0.21, 0.08, 0.02, 0.05, 0, ga); // la carne
+          piece(solids, unitBox, '#7a3a26', AU, AV + 0.08, 0.21, 0.07, 0.02, 0.05, 0, ga);
+          blinkers.push({ pos: new THREE.Vector3(q.x, ga + 0.24, q.z), color: '#ff8a3c', phase: 0, size: 0.45, steady: true });
+          persona(AU + 0.12, AV + 0.22, { ropa: '#e9e9e9' }); // el asador
+          persona(AU - 0.18, AV + 0.3);
+          persona(AU + 0.3, AV - 0.05, { ropa: '#3a7bd5' });
+          piece(solids, unitBox, '#7a5434', AU + 0.05, AV + 0.62, 0.11, 0.42, 0.03, 0.22, 0, ga); // mesa
+          persona(AU - 0.12, AV + 0.62, { sentada: true });
+          persona(AU + 0.22, AV + 0.62, { sentada: true });
+        }
+        // gente mirando el partido del lado de afuera de la cancha
+        for (const [du, dv] of [[-0.9, -1.0], [-0.65, -1.02], [-0.1, -1.0], [0.15, -1.03], [0.75, -1.0], [-1.55, 0.25], [-1.55, -0.1]]) persona(du, pv + dv);
+        // jugadores y pelota: se mueven en update()
+        partidos.push({ pc: at(0, pv), tan: tan.clone(), side: side.clone(), y: py + 0.05 });
       }
     }
   });
 
   // ---------- Guardaparques que caminan ----------
   const walkers = guardaparques.map((w) => {
-    const r = makeRanger(1.5);
+    const r = makePerson(1.5);
     root.add(r.g);
     return { ...w, ...r };
+  });
+
+  // ---------- Jugadores de fútbol 5 ----------
+  const CAMISETAS = [
+    { camisa: '#e8692e', pantalon: '#1e1e1e', medias: '#e8692e', botas: '#111111', corto: true, pelo: '#2a1d14' },
+    { camisa: '#f2f2f2', pantalon: '#1e4fa3', medias: '#f2f2f2', botas: '#111111', corto: true, pelo: '#3b2a1a' },
+  ];
+  const canchas = partidos.map((c) => {
+    const jugadores = [0, 1, 2, 3].map((k) => {
+      const r = makePerson(1.5, { ...CAMISETAS[k % 2], piel: ['#c99a72', '#8d5a3b', '#e0b48a', '#b07a52'][k] });
+      root.add(r.g);
+      // zona de cada uno: los naranjas de un lado, los blancos del otro
+      const base = [[-0.55, -0.25], [0.55, 0.2], [-0.35, 0.3], [0.45, -0.3]][k];
+      return { ...r, base, ph: k * 1.7 };
+    });
+    const pelota = new THREE.Mesh(new THREE.SphereGeometry(0.035, 10, 8), new THREE.MeshLambertMaterial({ color: '#ffffff' }));
+    root.add(pelota);
+    return { ...c, jugadores, pelota };
   });
 
   // ---------- Mallas ----------
@@ -1110,6 +1197,36 @@ export function buildPlaces({ projects, sites, stops, curve, roadDist, height, w
     root,
     setLang,
     update(time) {
+      // fútbol 5: cada jugador corre por su zona; la pelota va de uno a otro con un pique
+      for (const c of canchas) {
+        const toW = (u, v) => [c.pc.x + c.tan.x * u + c.side.x * v, c.pc.z + c.tan.z * u + c.side.z * v];
+        const pos = c.jugadores.map((j) => {
+          const u = j.base[0] + Math.sin(time * 0.9 + j.ph) * 0.32;
+          const v = j.base[1] + Math.sin(time * 0.7 + j.ph * 1.3) * 0.22;
+          return toW(u, v);
+        });
+        const T = 1.3; // un pase cada 1,3 s
+        const n = Math.floor(time / T);
+        const f = time / T - n;
+        const ORDEN = [0, 2, 1, 3];
+        const from = ORDEN[n % 4];
+        const to = ORDEN[(n + 1) % 4];
+        const bx = pos[from][0] + (pos[to][0] - pos[from][0]) * f;
+        const bz = pos[from][1] + (pos[to][1] - pos[from][1]) * f;
+        c.pelota.position.set(bx, c.y + 0.05 + Math.sin(Math.PI * f) * 0.12, bz);
+        c.jugadores.forEach((j, k) => {
+          const [x, z] = pos[k];
+          j.g.position.set(x, c.y, z);
+          j.g.rotation.y = Math.atan2(bx - x, bz - z); // miran la pelota
+          const sw = Math.sin(time * 11 + j.ph) * 0.7;
+          // el que patea levanta la pierna al soltar la pelota
+          const patea = k === from && f < 0.15 ? -1.1 * (1 - f / 0.15) : 0;
+          j.legs[0].rotation.x = sw;
+          j.legs[1].rotation.x = patea || -sw;
+          j.arms[0].rotation.x = -sw * 0.7;
+          j.arms[1].rotation.x = sw * 0.7;
+        });
+      }
       // van y vuelven por su recorrido, mirando hacia donde caminan y moviendo piernas y brazos
       for (const w of walkers) {
         const [a0, a1] = w.path;
