@@ -345,7 +345,7 @@ export function buildPlaces({ projects, sites, stops, curve, roadDist, height, w
   const glows = [];
   const textMeshes = [];
   const blinkers = [];
-  const guardaparques = []; // recorridos de los guardaparques que caminan
+  const guardaparques = []; // recorridos de la gente que camina (guardaparques, el mozo, clientes)
   const partidos = []; // canchas con jugadores
   const textures = [];
 
@@ -567,14 +567,15 @@ export function buildPlaces({ projects, sites, stops, curve, roadDist, height, w
     const PIEL = ['#e0b48a', '#c58c5f', '#8d5a3b', '#f0c9a0'];
     const ROPA = ['#d64545', '#3a7bd5', '#f2c230', '#2e9e6a', '#e8692e', '#8e5bd1', '#ececec'];
     const K = 1.5; // un poco más grandes que a escala, para que se vean desde arriba
-    const persona = (u, v, { sentada = false, ropa, mochila = false, guarda = false } = {}) => {
+    // giro: hacia dónde mira (si no, al azar); sobre: altura extra, para sentarla en una silla
+    const persona = (u, v, { sentada = false, ropa, mochila = false, guarda = false, giro: mira, sobre = 0 } = {}) => {
       if (!buildable(u, v) || !clearOfRoad(u, v, 0.1, 0.1, 0.1)) return;
       const q = at(u, v);
       const gq = groundAt(q.x, q.z);
       const col = guarda ? UNIF.chaleco : ropa || ROPA[Math.floor(rnd() * ROPA.length)];
       const piel = PIEL[Math.floor(rnd() * PIEL.length)];
-      const giro = rnd() * Math.PI * 2;
-      const pz = (geo, c, du, dv, y, w, h, d) => piece(solids, geo, c, u + du, v + dv, y * K, w * K, h * K, d * K, giro, gq);
+      const giro = mira ?? rnd() * Math.PI * 2;
+      const pz = (geo, c, du, dv, y, w, h, d) => piece(solids, geo, c, u + du, v + dv, y * K + sobre, w * K, h * K, d * K, giro, gq);
       if (sentada) {
         pz(unitBox, '#2f3a4a', 0, 0, 0.025, 0.045, 0.03, 0.06);
         pz(unitBox, col, 0, 0, 0.075, 0.05, 0.07, 0.04);
@@ -862,6 +863,25 @@ export function buildPlaces({ projects, sites, stops, curve, roadDist, height, w
           piece(solids, unitBox, '#d65a22', u + du * 1.3, v, 0.12, 0.08, 0.1, 0.012, 0, gy);
         }
       }
+      // gente sentada tomando café: mirando la mesa, con la taza adelante (algunas sillas libres)
+      {
+        const mesas = [[-0.95, sv - 0.32], [-0.35, sv - 0.55], [0.35, sv - 0.55], [0.95, sv - 0.32]];
+        const ocupadas = [[0, -1], [0, 1], [1, -1], [2, 1], [3, -1], [3, 1]];
+        for (const [m, sd] of ocupadas) {
+          const [u, v] = mesas[m];
+          // de frente a la mesa: el frente de una persona es (cos giro, −sin giro) en (u, v)
+          persona(u + sd * 0.15, v, { sentada: true, giro: sd < 0 ? 0 : Math.PI, sobre: 0.035 });
+          piece(solids, unitCyl, '#f4f1ea', u + sd * 0.045, v, 0.14, 0.03, 0.025, 0.03, 0, gy); // taza
+        }
+        for (const [u, v] of mesas) piece(solids, unitCyl, '#f4f1ea', u, v + 0.04, 0.14, 0.022, 0.03, 0.022, 0, gy);
+      }
+      // los que se mueven: el mozo entre la puerta y las mesas, y dos que llegan desde el playón
+      const MOZO = { camisa: '#f4f4f2', chaleco: '#1d1d1d', pantalon: '#1d1d1d', botas: '#111111', pelo: '#2a1d14' };
+      guardaparques.push(
+        { path: [at(0.02, sv - 0.12), at(0.7, sv - 0.75)], speed: 0.14, phase: 0.2, look: MOZO },
+        { path: [at(-1.75, roadHalf + 0.55), at(-0.2, sv - 0.15)], speed: 0.11, phase: 0.55, look: { camisa: '#3a7bd5', pantalon: '#3b3f46', botas: '#2b2b2b', pelo: '#5a3b22' } },
+        { path: [at(-1.62, roadHalf + 0.45), at(-0.07, sv - 0.2)], speed: 0.11, phase: 0.53, look: { camisa: '#e8692e', pantalon: '#2f3a4a', botas: '#2b2b2b', pelo: '#1d1410' } },
+      );
       // canteros naranjas con plantas tropicales a los costados
       for (const s of [-1, 1]) {
         const u = s * 1.38;
@@ -1129,9 +1149,9 @@ export function buildPlaces({ projects, sites, stops, curve, roadDist, height, w
     }
   });
 
-  // ---------- Guardaparques que caminan ----------
+  // ---------- Gente que camina: guardaparques, el mozo del café y clientes ----------
   const walkers = guardaparques.map((w) => {
-    const r = makePerson(1.5);
+    const r = makePerson(1.5, w.look);
     root.add(r.g);
     return { ...w, ...r };
   });
