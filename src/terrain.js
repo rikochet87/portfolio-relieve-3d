@@ -825,6 +825,102 @@ export async function createTerrain({ canvas, projects, reducedMotion, lang = 'e
     }
   }
 
+  // ---------- Botes en los ríos: un pesquero, una lancha de la policía y un bote particular ----------
+  // Van y vuelven por su tramo del cauce, del lado derecho según el sentido en que navegan.
+  const boatMat = (c) => new THREE.MeshLambertMaterial({ color: c, flatShading: true });
+  function makeBoat(tipo) {
+    const g = new THREE.Group();
+    const add = (geo, m, x, y, z) => {
+      const mesh = new THREE.Mesh(geo, m);
+      mesh.position.set(x, y, z);
+      g.add(mesh);
+      return mesh;
+    };
+    // casco: caja con la proa en punta (una cuña de cuatro lados adelante)
+    const hull = (L, W, H, col, borde) => {
+      add(new THREE.BoxGeometry(W, H, L * 0.72), boatMat(col), 0, H / 2, -L * 0.14);
+      const proa = new THREE.CylinderGeometry(0, W / Math.SQRT2, L * 0.28, 4, 1).rotateY(Math.PI / 4).rotateX(Math.PI / 2).scale(1, H / W, 1);
+      add(proa, boatMat(col), 0, H / 2, L * 0.36);
+      add(new THREE.BoxGeometry(W + 0.01, 0.025, L * 0.72), boatMat(borde), 0, H, -L * 0.14); // borda
+    };
+    const lights = [];
+    if (tipo === 'pesquero') {
+      hull(0.82, 0.26, 0.11, '#1f5d8c', '#e9e4d6');
+      add(new THREE.BoxGeometry(0.2, 0.15, 0.2), boatMat('#efe9dc'), 0, 0.19, -0.12); // cabina
+      add(new THREE.BoxGeometry(0.21, 0.02, 0.22), boatMat('#b8532b'), 0, 0.275, -0.12);
+      add(new THREE.CylinderGeometry(0.008, 0.008, 0.36, 5), boatMat('#d9d9d9'), 0, 0.3, 0.12); // mástil
+      // botalón con la red colgando
+      add(new THREE.CylinderGeometry(0.006, 0.006, 0.32, 5).rotateZ(Math.PI / 2.6), boatMat('#cfcfcf'), 0.12, 0.33, 0.12);
+      add(new THREE.BoxGeometry(0.02, 0.12, 0.08), boatMat('#7d8b6a'), 0.24, 0.25, 0.12);
+      add(new THREE.BoxGeometry(0.1, 0.05, 0.08), boatMat('#e0a63a'), -0.05, 0.135, -0.33); // cajones
+      add(new THREE.BoxGeometry(0.03, 0.03, 0.03), new THREE.MeshBasicMaterial({ color: '#ffe3a0' }), 0, 0.49, 0.12); // farol
+    } else if (tipo === 'policia') {
+      hull(0.72, 0.25, 0.1, '#f2f4f6', '#f2f4f6');
+      add(new THREE.BoxGeometry(0.262, 0.04, 0.52), boatMat('#1e4fa3'), 0, 0.055, -0.14); // franja azul en los costados
+      add(new THREE.BoxGeometry(0.18, 0.12, 0.2), boatMat('#f2f4f6'), 0, 0.16, -0.06); // cabina
+      add(new THREE.BoxGeometry(0.17, 0.05, 0.01), new THREE.MeshBasicMaterial({ color: '#9fd3ff' }), 0, 0.18, 0.045); // parabrisas
+      add(new THREE.BoxGeometry(0.15, 0.02, 0.05), boatMat('#2a2d33'), 0, 0.23, -0.06); // barra de luces
+      for (const [x, c] of [[-0.045, '#ff2d2d'], [0.045, '#2d6bff']]) {
+        const m = add(new THREE.BoxGeometry(0.07, 0.04, 0.06), new THREE.MeshBasicMaterial({ color: c }), x, 0.26, -0.06);
+        lights.push(m);
+      }
+    } else {
+      // bote particular: casco rojo, toldo blanco, dos personas
+      hull(0.56, 0.2, 0.08, '#c0392b', '#f2f2f2');
+      add(new THREE.BoxGeometry(0.16, 0.012, 0.16), boatMat('#f2f2f2'), 0, 0.22, -0.02); // toldo
+      for (const x of [-0.07, 0.07]) for (const z of [-0.09, 0.05]) add(new THREE.CylinderGeometry(0.004, 0.004, 0.13, 4), boatMat('#cfcfcf'), x, 0.15, z);
+      add(new THREE.BoxGeometry(0.05, 0.08, 0.06), boatMat('#3b3f46'), 0, 0.07, -0.29); // motor fuera de borda
+      for (const [z, c] of [[-0.14, '#f2c230'], [0.07, '#2e9e6a']]) {
+        add(new THREE.BoxGeometry(0.05, 0.06, 0.035), boatMat(c), 0, 0.12, z);
+        add(new THREE.BoxGeometry(0.03, 0.03, 0.03), boatMat('#d7a77c'), 0, 0.17, z);
+      }
+    }
+    // estela: una cuña blanca, apenas visible, detrás
+    const ge = new THREE.BufferGeometry();
+    ge.setAttribute('position', new THREE.Float32BufferAttribute([0, 0.004, -0.3, -0.24, 0.004, -1.05, 0.24, 0.004, -1.05], 3));
+    const estela = new THREE.Mesh(ge, new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.08, depthWrite: false, side: THREE.DoubleSide }));
+    g.add(estela);
+    scene.add(g);
+    return { g, lights };
+  }
+  // ri: qué río; u0..u1: tramo; carril: corrimiento desde el centro, en fracciones del ancho
+  const boats = [
+    { ...makeBoat('pesquero'), ri: 0, u0: 0.12, u1: 0.5, speed: 0.55, phase: 0.3, carril: 0.4 },
+    { ...makeBoat('policia'), ri: 0, u0: 0.5, u1: 0.9, speed: 1.1, phase: 0.0, carril: 0.35 },
+    { ...makeBoat('civil'), ri: 1, u0: 0.12, u1: 0.85, speed: 0.8, phase: 0.6, carril: 0.3 },
+  ];
+  for (const b of boats) b.len = rivers.curves[b.ri].getLength();
+  const boatPos = new THREE.Vector3();
+  const boatTan = new THREE.Vector3();
+  function moveBoats(time, rise) {
+    for (const b of boats) {
+      // ida y vuelta, con un frenado suave en cada punta
+      const span = (b.u1 - b.u0) * b.len;
+      const cyc = ((time * b.speed) / span + b.phase) % 2;
+      const ida = cyc < 1;
+      const f = ida ? cyc : 2 - cyc;
+      const e = f * f * (3 - 2 * f);
+      const u = b.u0 + (b.u1 - b.u0) * e;
+      const c = rivers.curves[b.ri];
+      c.getPointAt(u, boatPos);
+      c.getTangentAt(u, boatTan).setY(0).normalize();
+      if (!ida) boatTan.negate();
+      const off = RIVERS[b.ri].w * b.carril;
+      boatPos.x += -boatTan.z * off;
+      boatPos.z += boatTan.x * off;
+      boatPos.y = WATER * rise + Math.sin(time * 2.2 + b.phase * 7) * 0.012;
+      b.g.position.copy(boatPos);
+      b.g.rotation.set(Math.sin(time * 1.7 + b.phase * 5) * 0.04, Math.atan2(boatTan.x, boatTan.z), 0);
+      b.g.visible = rise > 0.9;
+      // balizas de la policía: alternan rojo y azul
+      if (b.lights.length) {
+        const on = Math.floor(time * 3) % 2;
+        b.lights[0].visible = on === 0;
+        b.lights[1].visible = on === 1;
+      }
+    }
+  }
+
   // ---------- Lugares sobre la ruta: localidades, estaciones de servicio y parajes ----------
   if (document.fonts?.load) {
     // los carteles se dibujan en un canvas: esperar la tipografía, pero sin trabar la carga
@@ -1114,6 +1210,7 @@ export async function createTerrain({ canvas, projects, reducedMotion, lang = 'e
   if (import.meta.env.DEV) {
     window.__relieve.stats = stats;
     window.__relieve.height = height;
+    window.__relieve.boats = () => boats.map((b) => [b.g.position.x, b.g.position.y, b.g.position.z]);
     window.__relieve.view = (px, py, pz, tx, ty, tz) => {
       flying = false;
       camera.position.set(px, py, pz);
@@ -1175,6 +1272,7 @@ export async function createTerrain({ canvas, projects, reducedMotion, lang = 'e
       lastVegRise = rise;
     }
     moveCars(uTime.value, uRise.value);
+    moveBoats(uTime.value, uRise.value);
     places.root.scale.y = Math.max(uRise.value, 0.001);
     for (const b of bridgeMeshes) {
       b.scale.y = Math.max(uRise.value, 0.001);
