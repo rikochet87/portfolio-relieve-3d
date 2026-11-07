@@ -16,15 +16,17 @@ const MARKER_SCALE = 0.6; // tamaño de los marcadores de proyecto (1 = tamaño 
 // no se cruza. Cada lugar queda a 9 o más de un cauce: la ruta necesita espacio entre el lugar y
 // el puente para doblar suave.
 const SITES = {
-  'equipos-viales': { x: 23, z: 18, h: 8 },
-  'sig-vial': { x: 1, z: 12, h: 12.5 },
-  racha: { x: -14, z: 18, h: 7 },
+  // Equipos Viales y SIG Vial comparten el predio de Vialidad: el galpón con las máquinas y el edificio
+  'equipos-viales': { x: 3, z: 27, h: 8.5 },
+  'sig-vial': { x: -4, z: 27, h: 8.5 },
+  racha: { x: -16, z: 21, h: 7 },
   calcuobra: { x: -29, z: 6, h: 8.5 },
   aion: { x: -20, z: -14, h: 11 },
-  trazocad: { x: 2, z: -22, h: 11 },
+  trazocad: { x: -9, z: -28, h: 11 },
   cancha: { x: 18, z: -26, h: 7.5 },
   tropico: { x: 33, z: -7, h: 7.5 },
-  actas: { x: 32, z: 4, h: 7.5 },
+  // el parque nacional, con espacio libre alrededor
+  actas: { x: 27, z: 22, h: 7.5 },
 };
 
 // ---------- Función de altura (la misma para la malla, los marcadores, el camino y el HUD) ----------

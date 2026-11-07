@@ -444,6 +444,56 @@ export function buildPlaces({ projects, sites, stops, curve, roadDist, height, w
       piece(solids, unitCone, '#4a8c4f', u, v, 0.98 * s, 0.34 * s, 0.5 * s, 0.34 * s, 0, gy);
     };
 
+    // galpón con techo de chapa y dos portones hacia la ruta
+    const galpon = (u, v, d, w, h) => {
+      if (!buildable(u, v)) return;
+      const { top, c: gc } = block(solids, unitBox, '#c9c8c2', u, v, w, h, d);
+      bake(solids, gableRoof, '#a3a8ae', new THREE.Vector3(gc.x, top + 0.09, gc.z), rot, new THREE.Vector3(w * 1.05, 0.18, d * 1.02));
+      const gy = groundAt(gc.x, gc.z);
+      // portones hacia el patio
+      for (let k = -1; k <= 1; k += 2) piece(solids, unitBox, '#6e747b', u + k * d * 0.25, v - w / 2 - 0.005, h * 0.4, 0.01, h * 0.7, d * 0.18, 0, gy);
+    };
+    // máquinas viales: coordenadas propias (l hacia adelante, s al costado) y un ángulo
+    const AMARILLO = '#f2b705';
+    const maquina = (tipo, cu, cv2, a) => {
+      if (!buildable(cu, cv2) || !clearOfRoad(cu, cv2, 0.6, 0.6, 0.15)) return;
+      const q0 = at(cu, cv2);
+      const gq = groundAt(q0.x, q0.z);
+      const ca = Math.cos(a);
+      const sa = Math.sin(a);
+      const mp = (list, geo, col, l, sd, y, w, h, d) => piece(list, geo, col, cu + l * ca - sd * sa, cv2 + l * sa + sd * ca, y, w, h, d, -a, gq);
+      const rueda = (l, sd, r = 0.07) => mp(solids, unitBox, '#1b1b1b', l, sd, r, 0.05, r * 2, r * 2);
+      if (tipo === 'motoniveladora') {
+        mp(solids, unitBox, AMARILLO, 0.08, 0, 0.17, 0.08, 0.06, 0.62); // bastidor
+        mp(solids, unitBox, AMARILLO, -0.2, 0, 0.17, 0.2, 0.15, 0.24); // motor
+        mp(solids, unitBox, AMARILLO, -0.02, 0, 0.3, 0.17, 0.16, 0.16); // cabina
+        mp(glows, unitBox, '#9fd3ff', 0.065, 0, 0.32, 0.14, 0.08, 0.01);
+        mp(solids, unitBox, '#3d4146', 0.12, 0, 0.07, 0.36, 0.06, 0.025); // cuchilla
+        for (const l of [-0.26, -0.12]) for (const sd of [-0.1, 0.1]) rueda(l, sd);
+        for (const sd of [-0.09, 0.09]) rueda(0.36, sd);
+      } else if (tipo === 'retro') {
+        mp(solids, unitBox, AMARILLO, 0, 0, 0.14, 0.2, 0.12, 0.36);
+        mp(solids, unitBox, AMARILLO, -0.05, 0, 0.28, 0.16, 0.17, 0.14);
+        mp(glows, unitBox, '#9fd3ff', 0.025, 0, 0.3, 0.12, 0.08, 0.01);
+        mp(solids, unitBox, '#3d4146', 0.24, 0, 0.08, 0.26, 0.07, 0.06); // pala frontal
+        mp(solids, unitBox, AMARILLO, -0.27, 0, 0.27, 0.035, 0.035, 0.22); // brazo
+        mp(solids, unitBox, AMARILLO, -0.39, 0, 0.16, 0.035, 0.2, 0.035);
+        mp(solids, unitBox, '#3d4146', -0.4, 0, 0.05, 0.08, 0.06, 0.08);
+        for (const l of [-0.11, 0.11]) for (const sd of [-0.11, 0.11]) rueda(l, sd, l < 0 ? 0.08 : 0.06);
+      } else if (tipo === 'volcador') {
+        mp(solids, unitBox, '#d9d9d6', 0.24, 0, 0.18, 0.2, 0.17, 0.16); // cabina
+        mp(glows, unitBox, '#9fd3ff', 0.325, 0, 0.21, 0.16, 0.06, 0.01);
+        mp(solids, unitBox, '#c0392b', -0.1, 0, 0.2, 0.22, 0.15, 0.48); // caja
+        mp(solids, unitBox, '#2b2b2b', 0.05, 0, 0.09, 0.16, 0.04, 0.6);
+        for (const l of [0.24, -0.08, -0.22]) for (const sd of [-0.1, 0.1]) rueda(l, sd, 0.06);
+      } else if (tipo === 'rodillo') {
+        mp(solids, unitBox, AMARILLO, -0.08, 0, 0.13, 0.16, 0.12, 0.26);
+        mp(solids, unitBox, AMARILLO, -0.1, 0, 0.27, 0.13, 0.14, 0.12);
+        mp(solids, unitCyl.clone().rotateZ(Math.PI / 2), '#7b8087', 0.17, 0, 0.08, 0.22, 0.16, 0.16); // rolo
+        for (const sd of [-0.09, 0.09]) rueda(-0.12, sd, 0.07);
+      }
+    };
+
     if (kind === 'localidad' || kind === 'vialidad') {
       // ---------- Localidad ----------
       // En 'vialidad' va sólo el predio (más abajo): sin casas ni tanque de agua.
@@ -584,69 +634,35 @@ export function buildPlaces({ projects, sites, stops, curve, roadDist, height, w
             piece(solids, unitBox, '#f3f4f5', u, v, PB + (PISO * PISOS) / 2, ww, hh, dd, 0, gb);
           }
         }
-        // galpones: uno largo detrás del edificio y otro grande al costado, con techo de chapa
-        const galpon = (u, v, d, w, h) => {
-          if (!buildable(u, v)) return;
-          const { top, c: gc } = block(solids, unitBox, '#c9c8c2', u, v, w, h, d);
-          bake(solids, gableRoof, '#a3a8ae', new THREE.Vector3(gc.x, top + 0.09, gc.z), rot, new THREE.Vector3(w * 1.05, 0.18, d * 1.02));
-          const gy = groundAt(gc.x, gc.z);
-          // portones hacia el patio
-          for (let k = -1; k <= 1; k += 2) piece(solids, unitBox, '#6e747b', u + k * d * 0.25, v - w / 2 - 0.005, h * 0.4, 0.01, h * 0.7, d * 0.18, 0, gy);
-        };
+        // galpón largo detrás del edificio; el galpón grande y las máquinas son de Equipos Viales
         galpon(U - 0.3, vb + 2.05, 2.2, 0.8, 0.42);
-        galpon(U + 3.4, vb + 2.3, 3.2, 1.4, 0.55);
-        // patio de ripio entre los galpones y la ruta
-        flat('#6f6553', 1.9, 5.2, roadHalf + 0.6, vb + 1.55);
-        // máquinas viales: coordenadas propias (l hacia adelante, s al costado) y un ángulo
-        const AMARILLO = '#f2b705';
-        const maquina = (tipo, cu, cv2, a) => {
-          if (!buildable(cu, cv2) || !clearOfRoad(cu, cv2, 0.6, 0.6, 0.15)) return;
-          const q0 = at(cu, cv2);
-          const gq = groundAt(q0.x, q0.z);
-          const ca = Math.cos(a);
-          const sa = Math.sin(a);
-          const mp = (list, geo, col, l, sd, y, w, h, d) => piece(list, geo, col, cu + l * ca - sd * sa, cv2 + l * sa + sd * ca, y, w, h, d, -a, gq);
-          const rueda = (l, sd, r = 0.07) => mp(solids, unitBox, '#1b1b1b', l, sd, r, 0.05, r * 2, r * 2);
-          if (tipo === 'motoniveladora') {
-            mp(solids, unitBox, AMARILLO, 0.08, 0, 0.17, 0.08, 0.06, 0.62); // bastidor
-            mp(solids, unitBox, AMARILLO, -0.2, 0, 0.17, 0.2, 0.15, 0.24); // motor
-            mp(solids, unitBox, AMARILLO, -0.02, 0, 0.3, 0.17, 0.16, 0.16); // cabina
-            mp(glows, unitBox, '#9fd3ff', 0.065, 0, 0.32, 0.14, 0.08, 0.01);
-            mp(solids, unitBox, '#3d4146', 0.12, 0, 0.07, 0.36, 0.06, 0.025); // cuchilla
-            for (const l of [-0.26, -0.12]) for (const sd of [-0.1, 0.1]) rueda(l, sd);
-            for (const sd of [-0.09, 0.09]) rueda(0.36, sd);
-          } else if (tipo === 'retro') {
-            mp(solids, unitBox, AMARILLO, 0, 0, 0.14, 0.2, 0.12, 0.36);
-            mp(solids, unitBox, AMARILLO, -0.05, 0, 0.28, 0.16, 0.17, 0.14);
-            mp(glows, unitBox, '#9fd3ff', 0.025, 0, 0.3, 0.12, 0.08, 0.01);
-            mp(solids, unitBox, '#3d4146', 0.24, 0, 0.08, 0.26, 0.07, 0.06); // pala frontal
-            mp(solids, unitBox, AMARILLO, -0.27, 0, 0.27, 0.035, 0.035, 0.22); // brazo
-            mp(solids, unitBox, AMARILLO, -0.39, 0, 0.16, 0.035, 0.2, 0.035);
-            mp(solids, unitBox, '#3d4146', -0.4, 0, 0.05, 0.08, 0.06, 0.08);
-            for (const l of [-0.11, 0.11]) for (const sd of [-0.11, 0.11]) rueda(l, sd, l < 0 ? 0.08 : 0.06);
-          } else if (tipo === 'volcador') {
-            mp(solids, unitBox, '#d9d9d6', 0.24, 0, 0.18, 0.2, 0.17, 0.16); // cabina
-            mp(glows, unitBox, '#9fd3ff', 0.325, 0, 0.21, 0.16, 0.06, 0.01);
-            mp(solids, unitBox, '#c0392b', -0.1, 0, 0.2, 0.22, 0.15, 0.48); // caja
-            mp(solids, unitBox, '#2b2b2b', 0.05, 0, 0.09, 0.16, 0.04, 0.6);
-            for (const l of [0.24, -0.08, -0.22]) for (const sd of [-0.1, 0.1]) rueda(l, sd, 0.06);
-          } else if (tipo === 'rodillo') {
-            mp(solids, unitBox, AMARILLO, -0.08, 0, 0.13, 0.16, 0.12, 0.26);
-            mp(solids, unitBox, AMARILLO, -0.1, 0, 0.27, 0.13, 0.14, 0.12);
-            mp(solids, unitCyl.clone().rotateZ(Math.PI / 2), '#7b8087', 0.17, 0, 0.08, 0.22, 0.16, 0.16); // rolo
-            for (const sd of [-0.09, 0.09]) rueda(-0.12, sd, 0.07);
-          }
-        };
-        maquina('motoniveladora', 2.4, roadHalf + 1.1, 0.15);
-        maquina('motoniveladora', 3.3, roadHalf + 1.05, 0.1);
-        maquina('retro', 4.3, roadHalf + 1.15, -0.3);
-        maquina('volcador', 2.5, vb + 0.55, 0);
-        maquina('volcador', 3.35, vb + 0.6, 0.05);
-        maquina('rodillo', 4.4, vb + 0.4, 1.4);
-        maquina('motoniveladora', 1.55, vb + 1.15, Math.PI / 2);
         // árboles del predio
-        for (const [u, v] of [[-2.4, vb + 0.4], [-2.5, vb + 1.6], [-1.9, vb + 2.9], [1.1, vb + 3.0], [5.4, vb + 1.0], [5.3, roadHalf + 1.0]]) tree(u, v, 0.9 + rnd() * 0.4);
+        for (const [u, v] of [[-2.4, vb + 0.4], [-2.5, vb + 1.6], [-1.9, vb + 2.9], [1.1, vb + 3.0]]) tree(u, v, 0.9 + rnd() * 0.4);
       }
+    } else if (kind === 'galpon') {
+      // ---------- Equipos Viales: el galpón grande del predio de Vialidad, con el patio de las máquinas ----------
+      let vg = roadHalf + 1.6; // borde del patio más lejos de la ruta
+      while (vg < roadHalf + 4 && !clearOfRoad(0, roadHalf + 1.2, 1.2, 3.6, 0.2)) vg += 0.3;
+      flat('#6f6553', -2.0, 2.0, roadHalf + 0.5, vg + 0.9);
+      galpon(0, vg + 1.65, 3.4, 1.4, 0.6);
+      // el nombre sobre los portones
+      {
+        const q = at(0, vg + 0.94);
+        const gq = groundAt(q.x, q.z);
+        piece(solids, unitBox, '#2b2f36', 0, vg + 0.945, 0.68, 0.02, 0.17, 1.5, 0, gq);
+        const tex = canvasTexture(768, 96, drawBrand);
+        textures.push(tex);
+        tex.userData.redraw(p);
+        textPlane(tex, new THREE.Vector3(q.x, gq + 0.68, q.z), side.clone().negate(), 1.44, 0.18, false);
+      }
+      maquina('motoniveladora', -1.4, roadHalf + 1.05, 0.15);
+      maquina('motoniveladora', -0.5, roadHalf + 1.0, 0.1);
+      maquina('retro', 1.4, roadHalf + 1.1, -0.3);
+      maquina('volcador', -1.25, vg + 0.35, 0);
+      maquina('volcador', -0.35, vg + 0.4, 0.05);
+      maquina('rodillo', 0.75, vg + 0.3, 1.4);
+      maquina('motoniveladora', 1.6, vg + 0.4, Math.PI / 2);
+      for (const [u, v] of [[2.6, vg + 0.6], [2.5, vg + 2.4], [-2.6, vg + 2.2], [2.6, roadHalf + 1.0]]) tree(u, v, 0.9 + rnd() * 0.4);
     } else if (kind === 'estacion') {
       // ---------- Estación de servicio ----------
       let v0 = roadHalf + 1.25;
@@ -877,8 +893,63 @@ export function buildPlaces({ projects, sites, stops, curve, roadDist, height, w
           piece(solids, unitBox, '#6a482c', u + a, v + b + 0.18, 0.07, 0.07, 0.03, 0.42, 0, gy);
         }
       }
+      // gente: acampando alrededor del fogón, entre las carpas y paseando por el sendero
+      const PIEL = ['#e0b48a', '#c58c5f', '#8d5a3b', '#f0c9a0'];
+      const ROPA = ['#d64545', '#3a7bd5', '#f2c230', '#2e9e6a', '#e8692e', '#8e5bd1', '#ececec'];
+      const K = 1.5; // un poco más grandes que a escala, para que se vean desde arriba
+      const persona = (u, v, { sentada = false, ropa, mochila = false, guarda = false } = {}) => {
+        if (!buildable(u, v) || !clearOfRoad(u, v, 0.1, 0.1, 0.1)) return;
+        const q = at(u, v);
+        const gq = groundAt(q.x, q.z);
+        const col = guarda ? '#6b6a3a' : ropa || ROPA[Math.floor(rnd() * ROPA.length)];
+        const piel = PIEL[Math.floor(rnd() * PIEL.length)];
+        const giro = rnd() * Math.PI * 2;
+        const pz = (geo, c, du, dv, y, w, h, d) => piece(solids, geo, c, u + du, v + dv, y * K, w * K, h * K, d * K, giro, gq);
+        if (sentada) {
+          pz(unitBox, '#2f3a4a', 0, 0, 0.025, 0.045, 0.03, 0.06);
+          pz(unitBox, col, 0, 0, 0.075, 0.05, 0.07, 0.04);
+          pz(unitBox, piel, 0, 0, 0.135, 0.035, 0.04, 0.035);
+        } else {
+          pz(unitBox, guarda ? '#4e4d2a' : '#2f3a4a', 0, 0, 0.04, 0.04, 0.08, 0.03);
+          pz(unitBox, col, 0, 0, 0.115, 0.05, 0.075, 0.035);
+          pz(unitBox, piel, 0, 0, 0.175, 0.035, 0.04, 0.035);
+          if (guarda) pz(unitCyl, '#8a6a3a', 0, 0, 0.2, 0.07, 0.012, 0.07); // sombrero
+          // la mochila, detrás: el frente de la persona es (cos giro, −sin giro) en (u, v)
+          if (mochila) pz(unitBox, '#5a4a3a', -Math.cos(giro) * 0.03 * K, Math.sin(giro) * 0.03 * K, 0.12, 0.04, 0.06, 0.03);
+        }
+      };
+      // guardaparque en la boletería
+      persona(0.5, v0 + 0.82, { guarda: true });
+      // alrededor del fogón (en v0 + 4.0)
+      for (const [du, dv] of [[-0.28, 0.05], [0.26, 0.12], [0.05, 0.3], [-0.12, -0.27], [0.2, -0.22]]) persona(du, v0 + 4.0 + dv, { sentada: true });
+      persona(-1.45, v0 + 3.45);
+      persona(1.55, v0 + 3.35);
+      persona(1.1, v0 + 4.85);
+      // sendero que sale del camping y se mete en el monte, con caminantes
+      const sendero = [[0, 4.6], [-0.4, 5.4], [-1.1, 6.0], [-2.0, 6.5], [-3.0, 6.7], [-3.9, 6.4]];
+      for (let k = 0; k < sendero.length - 1; k++) {
+        const [u0, w0] = sendero[k];
+        const [u1, w1] = sendero[k + 1];
+        const n = 4;
+        for (let j = 0; j < n; j++) {
+          const t = (j + 0.5) / n;
+          const u = u0 + (u1 - u0) * t;
+          const v = v0 + w0 + (w1 - w0) * t;
+          if (!buildable(u, v)) continue;
+          const q = at(u, v);
+          piece(solids, unitBox, '#9a8761', u, v, 0.004, 0.16, 0.012, 0.3, Math.atan2(w1 - w0, u1 - u0), groundAt(q.x, q.z));
+        }
+      }
+      persona(-0.55, v0 + 5.55, { mochila: true });
+      persona(-0.7, v0 + 5.68, { mochila: true });
+      persona(-2.3, v0 + 6.58, { mochila: true });
+      persona(-3.35, v0 + 6.62);
+      persona(-3.5, v0 + 6.55, { ropa: '#f2c230' });
+      // familia mirando el cartel de la entrada
+      persona(-0.55, v0 - 0.2);
+      persona(-0.68, v0 - 0.12, { ropa: '#3a7bd5' });
       // monte alrededor
-      for (const [u, v] of [[-2.6, 1.0], [2.5, 0.8], [-2.9, 2.5], [2.9, 2.2], [-2.7, 4.0], [2.8, 4.2], [-2.2, 5.6], [2.2, 5.7], [0, 6.3], [-1.4, 6.2], [1.5, 6.4], [3.3, 3.2], [-3.4, 3.3]]) {
+      for (const [u, v] of [[-2.6, 1.0], [2.5, 0.8], [-2.9, 2.5], [2.9, 2.2], [-2.7, 4.0], [2.8, 4.2], [-2.0, 5.5], [2.2, 5.7], [0.4, 6.4], [-1.2, 7.0], [1.5, 6.4], [3.3, 3.2], [-3.4, 3.3], [-2.6, 7.4], [-4.0, 7.3], [-1.0, 5.2], [-4.6, 5.8], [-3.2, 5.6]]) {
         tree(u + (rnd() - 0.5) * 0.4, v0 + v + (rnd() - 0.5) * 0.4, 0.85 + rnd() * 0.45);
       }
     } else {

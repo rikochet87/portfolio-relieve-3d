@@ -152,6 +152,7 @@ export const PROJECTS = [
   },
   {
     id: 'equipos-viales',
+    lugar: 'galpon', // en el mapa: el galpón con las máquinas, junto a SIG Vial (places.js)
     name: 'Equipos Viales',
     orbit: 1,
     since: '2026-06-05', // primer commit: ordena la ruta
