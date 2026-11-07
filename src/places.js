@@ -446,9 +446,9 @@ export function buildPlaces({ projects, sites, stops, curve, roadDist, height, w
 
     if (kind === 'localidad' || kind === 'vialidad') {
       // ---------- Localidad ----------
-      // En 'vialidad' el lado derecho de la ruta es el predio (más abajo) y las casas van enfrente.
+      // En 'vialidad' va sólo el predio (más abajo): sin casas ni tanque de agua.
       const predio = kind === 'vialidad';
-      const size = predio ? 9 : site.h >= 12.5 ? 16 : 11;
+      const size = predio ? 0 : site.h >= 12.5 ? 16 : 11;
       let placed = 0;
       const slots = [];
       for (const row of [1.55, 2.75]) for (let u = -3.6; u <= 3.6; u += 1.05) for (const s of [-1, 1]) slots.push([u + (rnd() - 0.5) * 0.25, s * (row + rnd() * 0.25)]);
@@ -481,8 +481,8 @@ export function buildPlaces({ projects, sites, stops, curve, roadDist, height, w
       }
       // tanque de agua elevado
       const freeSpot = (cands, size) => cands.find(([u, v]) => clearOfRoad(u, v, size, size, 0.5) && buildable(u, v)) || cands[0];
-      {
-        const [u, v] = freeSpot(predio ? [[2.2, -3.7], [-2.6, -3.9], [3.4, -2.6]] : [[2.2, -3.7], [-2.6, -3.9], [3.2, 3.9], [-3.6, 2.8]], 0.8);
+      if (!predio) {
+        const [u, v] = freeSpot([[2.2, -3.7], [-2.6, -3.9], [3.2, 3.9], [-3.6, 2.8]], 0.8);
         const c = at(u, v);
         const gy = groundAt(c.x, c.z);
         for (const [a, b] of [[-0.22, -0.22], [0.22, -0.22], [-0.22, 0.22], [0.22, 0.22]]) {
