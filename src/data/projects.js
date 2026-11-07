@@ -13,7 +13,8 @@ export const CATEGORIES = [
 export const PROJECTS = [
   {
     id: 'sig-vial',
-    lugar: 'vialidad', // en el mapa: el predio de Vialidad, con sus máquinas (places.js)
+    grupo: { es: 'SIG Vial y Equipos Viales', en: 'SIG Vial & Equipos Viales' }, // nombre del lugar compartido
+    lugar: 'vialidad', // en el mapa: el predio de Vialidad, con el edificio y el galpón de Equipos Viales
     name: 'SIG Vial Chaco',
     orbit: 0,
     since: '2026-06-10', // primer commit: ordena la ruta
@@ -152,7 +153,7 @@ export const PROJECTS = [
   },
   {
     id: 'equipos-viales',
-    lugar: 'galpon', // en el mapa: el galpón con las máquinas, junto a SIG Vial (places.js)
+    junto: 'sig-vial', // comparte lugar en el mapa con SIG Vial: el galpón de las máquinas, al lado del edificio
     name: 'Equipos Viales',
     orbit: 1,
     since: '2026-06-05', // primer commit: ordena la ruta

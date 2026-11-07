@@ -19,6 +19,7 @@ const UI = {
     close: 'Cerrar',
     prev: 'Anterior',
     next: 'Siguiente',
+    choose: '¿Cuál querés ver?',
   },
   en: {
     'nav.about': 'About',
@@ -36,6 +37,7 @@ const UI = {
     close: 'Close',
     prev: 'Previous',
     next: 'Next',
+    choose: 'Which one?',
   },
 };
 
@@ -153,7 +155,12 @@ function renderLabels() {
       const b = document.createElement('button');
       b.className = 'label is-hidden';
       b.style.setProperty('--c', p.color);
-      b.addEventListener('click', () => select(p.id));
+      const mates = membersOf(p.id);
+      if (mates.length > 1) {
+        b.classList.add('label--grupo');
+        b.style.setProperty('--c2', mates[1].color);
+      }
+      b.addEventListener('click', () => openSpot(p.id));
       b.addEventListener('mouseenter', () => galaxy?.setHover(p.id));
       b.addEventListener('mouseleave', () => galaxy?.setHover(null));
       box.appendChild(b);
@@ -165,8 +172,8 @@ function renderLabels() {
   }
   PROJECTS.forEach((p) => {
     const b = labelEls.get(p.id);
-    b.textContent = p.name;
-    b.setAttribute('aria-label', `${p.name} — ${p.tagline[lang]}`);
+    b.textContent = p.grupo ? p.grupo[lang] : p.name;
+    b.setAttribute('aria-label', p.grupo ? p.grupo[lang] : `${p.name} — ${p.tagline[lang]}`);
   });
   sunLabelEl.textContent = t('sun');
   labelSize.clear(); // otro idioma, otro ancho
@@ -210,6 +217,7 @@ function onFrame(data, sun, isFocused) {
     labelOffset.set(d.id, dy);
     el.style.transform = `translate(${d.x}px, ${d.y - dy}px) translate(-50%, -100%)`;
   }
+  if (chooserFor) placeChooser();
   sunLabelEl.classList.toggle('is-hidden', !sun.visible || isFocused);
   sunLabelEl.style.transform = `translate(${sun.x}px, ${sun.y}px) translate(-50%, 0)`;
 }
@@ -217,6 +225,59 @@ function onFrame(data, sun, isFocused) {
 function onHover(id) {
   labelEls.forEach((el, k) => el.classList.toggle('is-hover', k === id));
 }
+
+// ---------- Lugares compartidos ----------
+// Un proyecto con `junto` comparte el marcador de otro (SIG Vial y Equipos Viales, en el mismo
+// predio). Al tocar ese marcador se elige cuál de los dos ver.
+const hostOf = (id) => PROJECTS.find((p) => p.id === id)?.junto || id;
+function membersOf(id) {
+  return PROJECTS.filter((p) => hostOf(p.id) === id);
+}
+let chooserFor = null;
+function openSpot(id) {
+  const mates = membersOf(hostOf(id));
+  if (mates.length < 2) return select(id);
+  showChooser(hostOf(id), mates);
+}
+function showChooser(host, mates) {
+  closeChooser();
+  chooserFor = host;
+  const box = document.createElement('div');
+  box.className = 'chooser';
+  box.id = 'chooser';
+  box.setAttribute('role', 'dialog');
+  box.setAttribute('aria-label', t('choose'));
+  box.innerHTML = `<p class="chooser__q">${esc(t('choose'))}</p>${mates
+    .map((p) => `<button class="chooser__opt" style="--c:${p.color}" data-pick="${p.id}"><span class="chooser__name">${esc(p.name)}</span><span class="chooser__tag">${esc(p.tagline[lang])}</span></button>`)
+    .join('')}`;
+  box.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-pick]');
+    if (!b) return;
+    closeChooser();
+    select(b.dataset.pick);
+  });
+  document.body.appendChild(box);
+  placeChooser();
+  box.querySelector('button').focus({ preventScroll: true });
+}
+function placeChooser() {
+  const box = $('#chooser');
+  const el = chooserFor && labelEls.get(chooserFor);
+  if (!box || !el) return;
+  const r = el.getBoundingClientRect();
+  const w = box.offsetWidth;
+  const x = Math.min(Math.max(8, r.left + r.width / 2 - w / 2), innerWidth - w - 8);
+  let y = r.bottom + 8;
+  if (y + box.offsetHeight > innerHeight - 8) y = Math.max(8, r.top - box.offsetHeight - 8);
+  box.style.transform = `translate(${x}px, ${y}px)`;
+}
+function closeChooser() {
+  $('#chooser')?.remove();
+  chooserFor = null;
+}
+document.addEventListener('pointerdown', (e) => {
+  if (chooserFor && !e.target.closest('#chooser') && !e.target.closest('.label')) closeChooser();
+});
 
 // ---------- Panel de proyecto ----------
 function renderPanel(id) {
@@ -271,6 +332,7 @@ function openLightbox(src) {
 
 function select(id, { fromHash = false } = {}) {
   if (!id) return deselect();
+  closeChooser();
   closeOverlays();
   current = id;
   renderPanel(id);
@@ -398,6 +460,7 @@ document.addEventListener('click', (e) => {
 
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
+    if (chooserFor) return closeChooser();
     if ($('.lightbox')) return $('.lightbox').remove();
     if ($('.overlay.is-open')) return closeOverlays();
     deselect();
@@ -440,7 +503,7 @@ async function start() {
       projects: PROJECTS,
       reducedMotion,
       lang,
-      onSelect: (id) => (id ? select(id) : deselect()),
+      onSelect: (id) => (id ? openSpot(id) : (closeChooser(), deselect())),
       onHover,
       onFrame,
     });

@@ -16,9 +16,8 @@ const MARKER_SCALE = 0.6; // tamaño de los marcadores de proyecto (1 = tamaño 
 // no se cruza. Cada lugar queda a 9 o más de un cauce: la ruta necesita espacio entre el lugar y
 // el puente para doblar suave.
 const SITES = {
-  // Equipos Viales y SIG Vial comparten el predio de Vialidad: el galpón con las máquinas y el edificio
-  'equipos-viales': { x: 3, z: 27, h: 8.5 },
-  'sig-vial': { x: -4, z: 27, h: 8.5 },
+  // SIG Vial y Equipos Viales (`junto` en projects.js) comparten el predio de Vialidad: un solo lugar
+  'sig-vial': { x: -1, z: 27, h: 8.5 },
   racha: { x: -16, z: 21, h: 7 },
   calcuobra: { x: -29, z: 6, h: 8.5 },
   aion: { x: -20, z: -14, h: 11 },
@@ -324,7 +323,10 @@ export async function createTerrain({ canvas, projects, reducedMotion, lang = 'e
   const uTime = { value: 0 };
   const uRise = { value: reducedMotion ? 1 : 0 };
 
-  const sites = projects.map((p) => ({ ...(SITES[p.id] || { x: 0, z: 0, h: 6 }), id: p.id }));
+  // Un proyecto con `junto` comparte el lugar (y el marcador) de otro: no suma parada a la ruta.
+  const hostOf = (id) => projects.find((p) => p.id === id)?.junto || id;
+  const membersOf = (id) => projects.filter((p) => hostOf(p.id) === id).map((p) => p.id);
+  const sites = projects.filter((p) => !p.junto).map((p) => ({ ...(SITES[p.id] || { x: 0, z: 0, h: 6 }), id: p.id }));
   const rivers = makeRivers();
   const rawHeight = makeHeight(sites, rivers);
 
@@ -332,7 +334,7 @@ export async function createTerrain({ canvas, projects, reducedMotion, lang = 'e
   // La ruta pasa por todos los proyectos en orden de creación: el primero es el km 0. El perfil
   // longitudinal se suaviza (pendientes razonables), nunca baja del agua (terraplén) y el terreno
   // se nivela debajo.
-  const ROUTE = [...projects].sort((a, b) => (a.since || '').localeCompare(b.since || '')).map((p) => p.id);
+  const ROUTE = [...projects].filter((p) => !p.junto).sort((a, b) => (a.since || '').localeCompare(b.since || '')).map((p) => p.id);
   const routeSites = ROUTE.map((id) => sites.find((s) => s.id === id)).filter(Boolean);
   // Donde la ruta cruza un cauce se agregan cuatro puntos alineados, perpendiculares al río: el
   // tramo del medio queda recto y el puente cruza derecho, como uno de verdad.
@@ -846,7 +848,7 @@ export async function createTerrain({ canvas, projects, reducedMotion, lang = 'e
   })();
 
   // ---------- Marcadores ----------
-  const markers = projects.map((proj) => {
+  const markers = projects.filter((p) => !p.junto).map((proj) => {
     const s = SITES[proj.id] || { x: 0, z: 0 };
     const color = new THREE.Color(proj.color);
     const ground = height(s.x, s.z);
@@ -893,7 +895,9 @@ export async function createTerrain({ canvas, projects, reducedMotion, lang = 'e
     group.add(base, ring);
 
     hit.userData.id = proj.id;
-    return { id: proj.id, orbit: proj.orbit, ground, group, beam, head, edges, shell, glow, headGroup, base, ring, hit, hover: 0, dim: 0, phase: Math.random() * 10 };
+    const members = membersOf(proj.id);
+    const orbits = members.map((id) => projects.find((p) => p.id === id).orbit);
+    return { id: proj.id, members, orbits, orbit: proj.orbit, ground, group, beam, head, edges, shell, glow, headGroup, base, ring, hit, hover: 0, dim: 0, phase: Math.random() * 10 };
   });
 
   // ---------- HUD estilo SIG (si la página lo trae) ----------
@@ -945,7 +949,7 @@ export async function createTerrain({ canvas, projects, reducedMotion, lang = 'e
   }
 
   function focus(id) {
-    const m = markers.find((x) => x.id === id);
+    const m = markers.find((x) => x.id === hostOf(id));
     if (!m) return;
     focused = m;
     controls.autoRotate = false;
@@ -1188,7 +1192,7 @@ export async function createTerrain({ canvas, projects, reducedMotion, lang = 'e
       m.ring.position.y = m.base.position.y = g + 0.12;
       const isHover = hovered === m || focused === m;
       m.hover += ((isHover ? 1 : 0) - m.hover) * k * 2;
-      const dimmed = filter !== null && filter !== m.orbit;
+      const dimmed = filter !== null && !m.orbits.includes(filter);
       m.dim += ((dimmed ? 1 : 0) - m.dim) * k * 2;
       m.head.rotation.y += dt * 0.8;
       m.shell.rotation.y -= dt * 0.4;
@@ -1296,7 +1300,7 @@ export async function createTerrain({ canvas, projects, reducedMotion, lang = 'e
     focus,
     unfocus,
     setFilter,
-    setHover: (id) => setHovered(markers.find((m) => m.id === id) || null),
+    setHover: (id) => setHovered(markers.find((m) => m.id === hostOf(id)) || null),
     resize,
   };
 }

@@ -303,7 +303,7 @@ export function buildPlaces({ projects, sites, stops, curve, roadDist, height, w
   const DIV = 200;
   const lengths = curve.getLengths(n * DIV);
   const byId = new Map(projects.map((p) => [p.id, p]));
-  const order = [...projects].filter((p) => p.since).sort((a, b) => a.since.localeCompare(b.since));
+  const order = [...projects].filter((p) => p.since && !p.junto).sort((a, b) => a.since.localeCompare(b.since));
   const startLen = lengths[order.length ? stops[sites.findIndex((s) => s.id === order[0].id)] * DIV : 0] ?? 0;
 
   const signs = []; // carteles que cambian con el idioma
@@ -403,7 +403,7 @@ export function buildPlaces({ projects, sites, stops, curve, roadDist, height, w
       bake(solids, unitBox, '#5d6268', bp, rotS, new THREE.Vector3(W + 0.06, H + 0.06, 0.04));
       const tex = canvasTexture(1024, 360, drawEntrySign);
       textures.push(tex);
-      signs.push(() => tex.userData.redraw(p, lang));
+      signs.push(() => tex.userData.redraw(p.grupo ? { ...p, name: p.grupo[lang] } : p, lang));
       textPlane(tex, bp, new THREE.Vector3(-st.x, 0, -st.z), W, H, true, 0.032);
     }
 
@@ -634,35 +634,35 @@ export function buildPlaces({ projects, sites, stops, curve, roadDist, height, w
             piece(solids, unitBox, '#f3f4f5', u, v, PB + (PISO * PISOS) / 2, ww, hh, dd, 0, gb);
           }
         }
-        // galpón largo detrás del edificio; el galpón grande y las máquinas son de Equipos Viales
+        // galpón largo detrás del edificio
         galpon(U - 0.3, vb + 2.05, 2.2, 0.8, 0.42);
+        // al lado, el galpón grande con su patio y las máquinas: es Equipos Viales (`junto` en projects.js)
+        const vecino = projects.find((q) => q.junto === p.id);
+        {
+          const GU = 3.35;
+          const GD = 3.0;
+          const GW = 1.3;
+          flat('#6f6553', GU - GD / 2 - 0.15, GU + GD / 2 + 0.15, roadHalf + 0.35, vb + 0.05);
+          galpon(GU, vb + GW / 2, GD, GW, 0.6);
+          if (vecino) {
+            const q = at(GU, vb - 0.005);
+            const gq = groundAt(q.x, q.z);
+            piece(solids, unitBox, '#2b2f36', GU, vb - 0.005, 0.68, 0.02, 0.17, 1.5, 0, gq);
+            const tex = canvasTexture(768, 96, drawBrand);
+            textures.push(tex);
+            tex.userData.redraw(vecino);
+            textPlane(tex, new THREE.Vector3(q.x, gq + 0.68, q.z), side.clone().negate(), 1.44, 0.18, false);
+          }
+          maquina('motoniveladora', GU - 1.0, roadHalf + 0.95, 0.15);
+          maquina('motoniveladora', GU - 0.05, roadHalf + 0.9, 0.1);
+          maquina('retro', GU + 1.05, roadHalf + 1.0, -0.3);
+          maquina('volcador', GU - 0.95, vb - 0.45, 0);
+          maquina('volcador', GU + 0.05, vb - 0.42, 0.05);
+          maquina('rodillo', GU + 1.15, vb - 0.5, 1.4);
+        }
         // árboles del predio
-        for (const [u, v] of [[-2.4, vb + 0.4], [-2.5, vb + 1.6], [-1.9, vb + 2.9], [1.1, vb + 3.0]]) tree(u, v, 0.9 + rnd() * 0.4);
+        for (const [u, v] of [[-2.4, vb + 0.4], [-2.5, vb + 1.6], [-1.9, vb + 2.9], [1.1, vb + 3.0], [5.4, vb + 0.6], [5.2, vb + 2.0]]) tree(u, v, 0.9 + rnd() * 0.4);
       }
-    } else if (kind === 'galpon') {
-      // ---------- Equipos Viales: el galpón grande del predio de Vialidad, con el patio de las máquinas ----------
-      let vg = roadHalf + 1.6; // borde del patio más lejos de la ruta
-      while (vg < roadHalf + 4 && !clearOfRoad(0, roadHalf + 1.2, 1.2, 3.6, 0.2)) vg += 0.3;
-      flat('#6f6553', -2.0, 2.0, roadHalf + 0.5, vg + 0.9);
-      galpon(0, vg + 1.65, 3.4, 1.4, 0.6);
-      // el nombre sobre los portones
-      {
-        const q = at(0, vg + 0.94);
-        const gq = groundAt(q.x, q.z);
-        piece(solids, unitBox, '#2b2f36', 0, vg + 0.945, 0.68, 0.02, 0.17, 1.5, 0, gq);
-        const tex = canvasTexture(768, 96, drawBrand);
-        textures.push(tex);
-        tex.userData.redraw(p);
-        textPlane(tex, new THREE.Vector3(q.x, gq + 0.68, q.z), side.clone().negate(), 1.44, 0.18, false);
-      }
-      maquina('motoniveladora', -1.4, roadHalf + 1.05, 0.15);
-      maquina('motoniveladora', -0.5, roadHalf + 1.0, 0.1);
-      maquina('retro', 1.4, roadHalf + 1.1, -0.3);
-      maquina('volcador', -1.25, vg + 0.35, 0);
-      maquina('volcador', -0.35, vg + 0.4, 0.05);
-      maquina('rodillo', 0.75, vg + 0.3, 1.4);
-      maquina('motoniveladora', 1.6, vg + 0.4, Math.PI / 2);
-      for (const [u, v] of [[2.6, vg + 0.6], [2.5, vg + 2.4], [-2.6, vg + 2.2], [2.6, roadHalf + 1.0]]) tree(u, v, 0.9 + rnd() * 0.4);
     } else if (kind === 'estacion') {
       // ---------- Estación de servicio ----------
       let v0 = roadHalf + 1.25;

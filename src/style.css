@@ -88,6 +88,23 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .label:hover, .label.is-hover { border-color: var(--c); background: rgba(8, 10, 24, 0.85); }
 .label.is-dim { opacity: 0.18; }
 .label.is-hidden { opacity: 0; pointer-events: none; }
+.label--grupo::before { background: linear-gradient(90deg, var(--c) 50%, var(--c2) 50%); box-shadow: 0 0 8px var(--c), 0 0 8px var(--c2); }
+.chooser {
+  position: fixed; left: 0; top: 0; z-index: 25; width: min(300px, calc(100vw - 16px));
+  padding: 10px; border: 1px solid var(--line); border-radius: 14px; background: rgba(8, 10, 24, 0.92);
+  backdrop-filter: blur(10px); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+.chooser__q { margin: 2px 6px 8px; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); }
+.chooser__opt {
+  display: flex; flex-direction: column; gap: 2px; width: 100%; padding: 9px 12px 9px 26px; margin-top: 4px;
+  position: relative; text-align: left; border: 1px solid var(--line); border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03); color: var(--ink); cursor: pointer; font: inherit;
+  transition: border-color .2s, background .2s;
+}
+.chooser__opt::before { content: ''; position: absolute; left: 11px; top: 15px; width: 7px; height: 7px; border-radius: 50%; background: var(--c); box-shadow: 0 0 8px var(--c); }
+.chooser__opt:hover, .chooser__opt:focus-visible { border-color: var(--c); background: rgba(255, 255, 255, 0.07); outline: none; }
+.chooser__name { font-family: var(--font-display); font-size: 14px; font-weight: 600; }
+.chooser__tag { font-size: 12px; color: var(--ink-2, var(--ink-3)); line-height: 1.35; }
 .label--sun { border: 0; background: transparent; backdrop-filter: none; font-size: 12px; color: var(--ink-3); letter-spacing: .08em; text-transform: uppercase; pointer-events: none; }
 .label--sun::before { display: none; }
 
