@@ -272,12 +272,60 @@ const gableRoof = (() => {
 })();
 for (const g of [unitBox, unitCyl, unitCone, hipRoof, gableRoof]) g.deleteAttribute('uv');
 
+// Uniforme de guardaparque nacional: sombrero de ala ancha y pantalón verde oliva, camisa
+// beige y chaleco gris oscuro con el escudo dorado en el pecho.
+const UNIF = { sombrero: '#5f5c3f', pantalon: '#6f7358', camisa: '#d6cbb4', chaleco: '#33383f', escudo: '#d4a62a', botas: '#4a3628' };
+
+// Un guardaparque con piernas y brazos que se mueven: piezas propias (no van en la malla única).
+function makeRanger(scale) {
+  const mat = (c) => new THREE.MeshLambertMaterial({ color: c, flatShading: true });
+  const M = Object.fromEntries(Object.entries(UNIF).map(([k, c]) => [k, mat(c)]));
+  const piel = mat('#c99a72');
+  const box = (w, h, d, m, x, y, z, parent) => {
+    const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m);
+    b.position.set(x, y, z);
+    parent.add(b);
+    return b;
+  };
+  const g = new THREE.Group();
+  // piernas, colgadas de la cadera
+  const legs = [-1, 1].map((sd) => {
+    const hip = new THREE.Group();
+    hip.position.set(sd * 0.013, 0.08, 0);
+    box(0.018, 0.075, 0.022, M.pantalon, 0, -0.037, 0, hip);
+    box(0.02, 0.012, 0.03, M.botas, 0, -0.074, 0.004, hip);
+    g.add(hip);
+    return hip;
+  });
+  box(0.05, 0.075, 0.03, M.camisa, 0, 0.118, 0, g); // torso con la camisa
+  box(0.054, 0.068, 0.034, M.chaleco, 0, 0.12, 0, g); // chaleco encima
+  box(0.01, 0.01, 0.002, M.escudo, -0.012, 0.135, 0.018, g); // escudo en el pecho
+  // brazos con las mangas de la camisa, colgados del hombro
+  const arms = [-1, 1].map((sd) => {
+    const sh = new THREE.Group();
+    sh.position.set(sd * 0.034, 0.15, 0);
+    box(0.014, 0.065, 0.016, M.camisa, 0, -0.03, 0, sh);
+    box(0.012, 0.012, 0.014, piel, 0, -0.068, 0, sh);
+    g.add(sh);
+    return sh;
+  });
+  box(0.03, 0.032, 0.03, piel, 0, 0.172, 0, g); // cabeza
+  const ala = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.036, 0.004, 14), M.sombrero);
+  ala.position.y = 0.19;
+  const copa = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.019, 0.02, 10), M.sombrero);
+  copa.position.y = 0.2;
+  g.add(ala, copa);
+  g.scale.setScalar(scale);
+  return { g, legs, arms };
+}
+
 export function buildPlaces({ projects, sites, stops, curve, roadDist, height, water, roadHalf, lang, quality }) {
   const root = new THREE.Group();
   const solids = [];
   const glows = [];
   const textMeshes = [];
   const blinkers = [];
+  const guardaparques = []; // recorridos de los guardaparques que caminan
   const textures = [];
 
   const tmpM = new THREE.Matrix4();
@@ -901,7 +949,7 @@ export function buildPlaces({ projects, sites, stops, curve, roadDist, height, w
         if (!buildable(u, v) || !clearOfRoad(u, v, 0.1, 0.1, 0.1)) return;
         const q = at(u, v);
         const gq = groundAt(q.x, q.z);
-        const col = guarda ? '#6b6a3a' : ropa || ROPA[Math.floor(rnd() * ROPA.length)];
+        const col = guarda ? UNIF.chaleco : ropa || ROPA[Math.floor(rnd() * ROPA.length)];
         const piel = PIEL[Math.floor(rnd() * PIEL.length)];
         const giro = rnd() * Math.PI * 2;
         const pz = (geo, c, du, dv, y, w, h, d) => piece(solids, geo, c, u + du, v + dv, y * K, w * K, h * K, d * K, giro, gq);
@@ -910,10 +958,14 @@ export function buildPlaces({ projects, sites, stops, curve, roadDist, height, w
           pz(unitBox, col, 0, 0, 0.075, 0.05, 0.07, 0.04);
           pz(unitBox, piel, 0, 0, 0.135, 0.035, 0.04, 0.035);
         } else {
-          pz(unitBox, guarda ? '#4e4d2a' : '#2f3a4a', 0, 0, 0.04, 0.04, 0.08, 0.03);
+          pz(unitBox, guarda ? UNIF.pantalon : '#2f3a4a', 0, 0, 0.04, 0.04, 0.08, 0.03);
           pz(unitBox, col, 0, 0, 0.115, 0.05, 0.075, 0.035);
           pz(unitBox, piel, 0, 0, 0.175, 0.035, 0.04, 0.035);
-          if (guarda) pz(unitCyl, '#8a6a3a', 0, 0, 0.2, 0.07, 0.012, 0.07); // sombrero
+          if (guarda) {
+            pz(unitBox, UNIF.camisa, 0, 0, 0.11, 0.062, 0.06, 0.026); // mangas de la camisa
+            pz(unitCyl, UNIF.sombrero, 0, 0, 0.196, 0.075, 0.01, 0.075); // ala del sombrero
+            pz(unitCyl, UNIF.sombrero, 0, 0, 0.21, 0.04, 0.025, 0.04); // copa
+          }
           // la mochila, detrás: el frente de la persona es (cos giro, −sin giro) en (u, v)
           if (mochila) pz(unitBox, '#5a4a3a', -Math.cos(giro) * 0.03 * K, Math.sin(giro) * 0.03 * K, 0.12, 0.04, 0.06, 0.03);
         }
@@ -945,9 +997,11 @@ export function buildPlaces({ projects, sites, stops, curve, roadDist, height, w
       persona(-2.3, v0 + 6.58, { mochila: true });
       persona(-3.35, v0 + 6.62);
       persona(-3.5, v0 + 6.55, { ropa: '#f2c230' });
-      // familia mirando el cartel de la entrada
-      persona(-0.55, v0 - 0.2);
-      persona(-0.68, v0 - 0.12, { ropa: '#3a7bd5' });
+      // dos guardaparques recorriendo el acceso, del pórtico al camping y de vuelta
+      guardaparques.push(
+        { path: [at(0.18, v0 - 0.35), at(0.18, v0 + 3.3)], speed: 0.16, phase: 0 },
+        { path: [at(-0.06, v0 - 0.2), at(-0.06, v0 + 3.45)], speed: 0.16, phase: 0.04 },
+      );
       // monte alrededor
       for (const [u, v] of [[-2.6, 1.0], [2.5, 0.8], [-2.9, 2.5], [2.9, 2.2], [-2.7, 4.0], [2.8, 4.2], [-2.0, 5.5], [2.2, 5.7], [0.4, 6.4], [-1.2, 7.0], [1.5, 6.4], [3.3, 3.2], [-3.4, 3.3], [-2.6, 7.4], [-4.0, 7.3], [-1.0, 5.2], [-4.6, 5.8], [-3.2, 5.6]]) {
         tree(u + (rnd() - 0.5) * 0.4, v0 + v + (rnd() - 0.5) * 0.4, 0.85 + rnd() * 0.45);
@@ -1006,6 +1060,13 @@ export function buildPlaces({ projects, sites, stops, curve, roadDist, height, w
     }
   });
 
+  // ---------- Guardaparques que caminan ----------
+  const walkers = guardaparques.map((w) => {
+    const r = makeRanger(1.5);
+    root.add(r.g);
+    return { ...w, ...r };
+  });
+
   // ---------- Mallas ----------
   if (solids.length) {
     const m = new THREE.Mesh(mergeGeometries(solids), new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
@@ -1049,6 +1110,28 @@ export function buildPlaces({ projects, sites, stops, curve, roadDist, height, w
     root,
     setLang,
     update(time) {
+      // van y vuelven por su recorrido, mirando hacia donde caminan y moviendo piernas y brazos
+      for (const w of walkers) {
+        const [a0, a1] = w.path;
+        const len = Math.hypot(a1.x - a0.x, a1.z - a0.z);
+        const cyc = ((time * w.speed) / len + w.phase) % 2;
+        const ida = cyc < 1;
+        const f = ida ? cyc : 2 - cyc;
+        // un respiro en cada punta: se frenan y dan la vuelta
+        const e = f < 0.04 ? 0 : f > 0.96 ? 1 : (f - 0.04) / 0.92;
+        const x = a0.x + (a1.x - a0.x) * e;
+        const z = a0.z + (a1.z - a0.z) * e;
+        w.g.position.set(x, height(x, z), z);
+        const dx = (a1.x - a0.x) * (ida ? 1 : -1);
+        const dz = (a1.z - a0.z) * (ida ? 1 : -1);
+        w.g.rotation.y = Math.atan2(dx, dz);
+        const moving = e > 0 && e < 1;
+        const sw = moving ? Math.sin(time * 9 + w.phase * 40) * 0.6 : 0;
+        w.legs[0].rotation.x = sw;
+        w.legs[1].rotation.x = -sw;
+        w.arms[0].rotation.x = -sw * 0.8;
+        w.arms[1].rotation.x = sw * 0.8;
+      }
       for (const b of sprites) {
         if (b.steady) continue;
         const on = (time * 0.9 + b.phase) % 1 < 0.45;
