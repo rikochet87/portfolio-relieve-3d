@@ -168,50 +168,42 @@ function drawTotem(g, w, h, p) {
   });
 }
 
-// Cartel alto del parador: una taza, el nombre y qué es.
-function drawCafeSign(g, w, h, p, lang) {
-  g.fillStyle = '#3a2418';
-  roundRect(g, 4, 4, w - 8, h - 8, 22);
-  g.fill();
-  g.strokeStyle = p.color;
-  g.lineWidth = 10;
-  roundRect(g, 18, 18, w - 36, h - 36, 14);
-  g.stroke();
-  // taza con humo
-  const cx = 104;
-  const cy = h / 2 + 16;
-  g.fillStyle = '#f3e7d3';
-  g.beginPath();
-  g.moveTo(cx - 46, cy - 34);
-  g.lineTo(cx + 46, cy - 34);
-  g.lineTo(cx + 36, cy + 34);
-  g.lineTo(cx - 36, cy + 34);
-  g.closePath();
-  g.fill();
-  g.lineWidth = 10;
-  g.strokeStyle = '#f3e7d3';
-  g.beginPath();
-  g.arc(cx + 48, cy - 8, 16, -Math.PI / 2, Math.PI / 2);
-  g.stroke();
-  g.strokeStyle = 'rgba(243,231,211,0.7)';
-  g.lineWidth = 6;
-  for (const dx of [-16, 8]) {
-    g.beginPath();
-    g.moveTo(cx + dx, cy - 46);
-    g.bezierCurveTo(cx + dx - 14, cy - 62, cx + dx + 14, cy - 76, cx + dx, cy - 92);
-    g.stroke();
-  }
-  g.fillStyle = '#ffffff';
-  g.textAlign = 'left';
+// Marca de Trópico, como en el toldo del local real: el nombre grande en blanco sobre terracota
+// y «concept coffee» debajo. Sirve para el toldo y para el cartel alto de la ruta.
+const TERRACOTA = '#c4461f';
+function drawTropico(g, w, h, p, lang, tall = false) {
+  g.fillStyle = TERRACOTA;
+  g.fillRect(0, 0, w, h);
+  g.fillStyle = 'rgba(0,0,0,0.1)';
+  g.fillRect(0, h - h * 0.08, w, h * 0.08);
+  g.fillStyle = '#fbf3e6';
+  g.textAlign = 'center';
   g.textBaseline = 'middle';
-  const name = p.name.toUpperCase();
-  fitText(g, name, w - 230, 92);
-  g.fillText(name, 196, h * 0.4);
-  g.fillStyle = p.color;
-  const sub = lang === 'es' ? 'PARADOR · ABIERTO 24 H' : 'ROADSIDE CAFÉ · OPEN 24 H';
-  fitText(g, sub, w - 230, 46, 600);
-  g.fillText(sub, 198, h * 0.7);
+  const name = p.name.split(' ')[0].toUpperCase(); // «TRÓPICO»
+  const big = tall ? h * 0.34 : h * 0.5;
+  g.save();
+  g.translate(w / 2, h * (tall ? 0.36 : 0.4));
+  g.transform(1, 0, -0.12, 1, 0, 0); // apenas inclinada, como la letra de la marca
+  fitText(g, name, w * 0.82, big, 800);
+  g.fillText(name, 0, 0);
+  g.restore();
+  // la ® chica arriba a la derecha
+  const nw = g.measureText(name).width;
+  g.lineWidth = Math.max(2, big * 0.04);
+  g.strokeStyle = '#fbf3e6';
+  g.beginPath();
+  g.arc(w / 2 + nw / 2 + big * 0.18, h * (tall ? 0.36 : 0.4) - big * 0.32, big * 0.09, 0, Math.PI * 2);
+  g.stroke();
+  fitText(g, 'concept coffee', w * 0.5, big * 0.36, 500);
+  g.fillText('concept coffee', w / 2 + w * 0.06, h * (tall ? 0.6 : 0.8));
+  if (tall) {
+    g.fillStyle = 'rgba(251,243,230,0.85)';
+    const sub = lang === 'es' ? 'PARADOR · ABIERTO 24 H' : 'ROADSIDE CAFÉ · OPEN 24 H';
+    fitText(g, sub, w * 0.8, h * 0.1, 600);
+    g.fillText(sub, w / 2, h * 0.84);
+  }
 }
+const drawCafeSign = (g, w, h, p, lang) => drawTropico(g, w, h, p, lang, true);
 
 // Pórtico del parque: letras claras talladas sobre madera oscura.
 function drawParkSign(g, w, h, lang) {
@@ -557,75 +549,102 @@ export function buildPlaces({ projects, sites, stops, curve, roadDist, height, w
         textPlane(tex, new THREE.Vector3(c.x, g0 + 1.6, c.z), tan.clone().negate(), 0.62, 1.04, true, 0.052);
       }
     } else if (kind === 'cafe') {
-      // ---------- Parador de ruta: playón, galería con mesas y el cartel alto ----------
-      let sv = roadHalf + 1.7; // frente del local
-      while (sv < roadHalf + 4.5 && !clearOfRoad(0, sv + 0.45, 1.0, 2.2, 0.3)) sv += 0.3;
-      // playón de ripio entre la ruta y el local
-      flat('#7d725f', -1.9, 1.9, roadHalf + 0.25, sv - 0.05);
-      // el local
-      const { top, c } = block(solids, unitBox, '#efe3cb', 0, sv + 0.45, 0.9, 0.6, 2.1);
+      // ---------- Parador de ruta, con la fachada del Trópico de verdad: frente crema, toldo
+      // terracota con la marca, dos ventanales en arco, sillas naranjas y canteros con plantas ----------
+      let sv = roadHalf + 2.0; // frente del local
+      while (sv < roadHalf + 4.8 && !clearOfRoad(0, sv + 0.45, 1.0, 2.6, 0.3)) sv += 0.3;
+      // playón de ripio junto a la ruta y la vereda de baldosas frente al local
+      flat('#7d725f', -2.1, 2.1, roadHalf + 0.25, sv - 0.8);
+      flat('#c9b79c', -1.5, 1.5, sv - 0.8, sv + 0.02, 0.5);
+      // el local, de dos plantas y techo plano
+      const { top, c } = block(solids, unitBox, '#f3e8d2', 0, sv + 0.45, 0.9, 0.95, 2.3);
       const gy = groundAt(c.x, c.z);
-      bake(solids, gableRoof, '#b8532b', new THREE.Vector3(c.x, top + 0.14, c.z), rot, new THREE.Vector3(1.05, 0.28, 2.25));
-      // galería: techo de madera sobre postes, hacia el playón
-      const GY = top - gy - 0.14;
-      piece(solids, unitBox, '#7a4a2a', 0, sv - 0.32, GY, 0.68, 0.05, 2.2, 0, gy);
-      for (let u = -1.0; u <= 1.01; u += 0.5) piece(solids, unitBox, '#6a3f22', u, sv - 0.62, GY / 2, 0.05, GY, 0.05, 0, gy);
-      piece(glows, unitBox, '#ffe2b0', 0, sv - 0.32, GY - 0.03, 0.5, 0.01, 1.9, 0, gy);
-      // ventanales encendidos
-      piece(glows, unitBox, '#ffd9a0', -0.45, sv - 0.005, 0.22, 0.01, 0.2, 0.7, 0, gy);
-      piece(glows, unitBox, '#ffd9a0', 0.55, sv - 0.005, 0.22, 0.01, 0.2, 0.55, 0, gy);
-      // nombre sobre la galería
+      piece(solids, unitBox, '#ddd0b5', 0, sv + 0.45, top - gy + 0.02, 0.94, 0.05, 2.34, 0, gy);
+      const H = top - gy; // alto del frente sobre el suelo del medio
+      // persianas de la planta alta
+      for (const u of [-0.7, 0, 0.7]) {
+        piece(solids, unitBox, '#8d7c66', u, sv - 0.01, H - 0.26, 0.03, 0.24, 0.3, 0, gy);
+        piece(solids, unitBox, '#c9b79a', u, sv - 0.025, H - 0.4, 0.05, 0.025, 0.36, 0, gy);
+      }
+      // toldo terracota con la marca
+      piece(solids, unitBox, TERRACOTA, 0, sv - 0.1, 0.56, 0.2, 0.16, 2.3, 0, gy);
+      piece(solids, unitBox, '#9e3416', 0, sv - 0.19, 0.47, 0.03, 0.03, 2.3, 0, gy);
       {
-        const fp = at(0, sv - 0.01);
-        fp.y = gy + GY + 0.11;
-        const tex = canvasTexture(512, 128, drawBrand);
+        const fp = at(0, sv - 0.205);
+        fp.y = gy + 0.56;
+        const tex = canvasTexture(1024, 160, (g, w, h, p) => drawTropico(g, w, h, p, lang));
         textures.push(tex);
         tex.userData.redraw(p);
-        textPlane(tex, fp, side.clone().negate(), 1.2, 0.17, false);
+        textPlane(tex, fp, side.clone().negate(), 2.28, 0.156, false, 0.002);
       }
-      // mesas bajo la galería y en la terraza del costado, con sombrillas naranjas
-      for (const u of [-0.75, -0.25, 0.25, 0.75]) {
-        piece(solids, unitCyl, '#e2dccf', u, sv - 0.3, 0.1, 0.18, 0.03, 0.18, 0, gy);
-        piece(solids, unitCyl, '#8b8b8b', u, sv - 0.3, 0.05, 0.03, 0.1, 0.03, 0, gy);
+      // dos ventanales en arco y la puerta, con marco terracota y la luz de adentro
+      const arch = unitCyl.clone().rotateZ(Math.PI / 2); // disco que mira a la calle
+      for (const u of [-0.62, 0.62]) {
+        // debajo del toldo: el arco tiene que terminar antes que él
+        piece(solids, unitBox, '#b04a22', u, sv - 0.012, 0.13, 0.02, 0.24, 0.46, 0, gy);
+        piece(solids, arch, '#b04a22', u, sv - 0.012, 0.25, 0.02, 0.46, 0.46, 0, gy);
+        piece(glows, unitBox, '#ffe7c4', u, sv - 0.024, 0.13, 0.01, 0.22, 0.38, 0, gy);
+        piece(glows, arch, '#ffe7c4', u, sv - 0.024, 0.25, 0.01, 0.38, 0.38, 0, gy);
+        piece(solids, unitBox, '#b04a22', u, sv - 0.03, 0.2, 0.01, 0.38, 0.022, 0, gy); // parante
+        piece(solids, unitBox, '#b04a22', u, sv - 0.03, 0.25, 0.01, 0.022, 0.38, 0, gy); // travesaño
       }
-      for (const [u, v] of [[1.45, sv + 0.05], [1.85, sv + 0.55], [1.45, sv + 1.0]]) {
-        if (!buildable(u, v) || !clearOfRoad(u, v, 0.5, 0.5, 0.2)) continue;
+      piece(solids, unitBox, '#9e3416', 0, sv - 0.012, 0.21, 0.02, 0.42, 0.26, 0, gy);
+      piece(glows, unitBox, '#ffe7c4', 0, sv - 0.024, 0.18, 0.01, 0.34, 0.18, 0, gy);
+      // mesas negras con sillas naranjas en la vereda
+      for (const [u, v] of [[-0.95, sv - 0.32], [-0.35, sv - 0.55], [0.35, sv - 0.55], [0.95, sv - 0.32]]) {
+        piece(solids, unitCyl, '#1d1d1d', u, v, 0.005, 0.12, 0.01, 0.12, 0, gy);
+        piece(solids, unitCyl, '#2a2a2a', u, v, 0.06, 0.015, 0.12, 0.015, 0, gy);
+        piece(solids, unitCyl, '#c9531f', u, v, 0.12, 0.17, 0.015, 0.17, 0, gy);
+        for (const du of [-0.14, 0.14]) {
+          piece(solids, unitBox, '#d65a22', u + du, v, 0.07, 0.08, 0.015, 0.08, 0, gy);
+          piece(solids, unitBox, '#d65a22', u + du * 1.3, v, 0.12, 0.08, 0.1, 0.012, 0, gy);
+        }
+      }
+      // canteros naranjas con plantas tropicales a los costados
+      for (const s of [-1, 1]) {
+        const u = s * 1.38;
+        const v = sv - 0.35;
+        if (!buildable(u, v)) continue;
         const q = at(u, v);
         const qy = groundAt(q.x, q.z);
-        piece(solids, unitCyl, '#e2e2e2', u, v, 0.1, 0.18, 0.03, 0.18, 0, qy);
-        piece(solids, unitCyl, '#cfcfcf', u, v, 0.26, 0.02, 0.4, 0.02, 0, qy);
-        piece(solids, unitCone, '#e8692e', u, v, 0.48, 0.46, 0.13, 0.46, 0, qy);
+        piece(solids, unitBox, '#d2541f', u, v, 0.09, 0.55, 0.18, 0.32, 0, qy);
+        for (let k = 0; k < 6; k++) {
+          const a = k * 1.05 + rnd();
+          const du = Math.cos(a) * 0.1;
+          const dv = Math.sin(a) * 0.17;
+          const hh = 0.22 + rnd() * 0.16;
+          piece(solids, unitCone, k % 2 ? '#3f8f3a' : '#57a843', u + du, v + dv, 0.18 + hh / 2, 0.12, hh, 0.12, a, qy);
+        }
       }
-      // un camión y un auto estacionados
+      // un camión y un auto en el playón
       {
         const tv = roadHalf + 0.75;
-        if (clearOfRoad(-0.95, tv, 0.36, 1.5, 0.05)) {
-          const g0 = groundAt(at(-0.95, tv).x, at(-0.95, tv).z);
-          piece(solids, unitBox, '#e9ecef', -1.05, tv, 0.25, 0.3, 0.34, 1.05, 0, g0);
-          piece(solids, unitBox, '#c0392b', -0.3, tv, 0.18, 0.3, 0.24, 0.3, 0, g0);
-          piece(glows, unitBox, '#9fd3ff', -0.15, tv, 0.24, 0.26, 0.07, 0.01, 0, g0);
-          for (const u of [-1.35, -0.8, -0.3]) piece(solids, unitBox, '#1c1c1c', u, tv, 0.06, 0.34, 0.12, 0.13, 0, g0);
+        if (clearOfRoad(-1.15, tv, 0.36, 1.5, 0.05)) {
+          const g0 = groundAt(at(-1.15, tv).x, at(-1.15, tv).z);
+          piece(solids, unitBox, '#e9ecef', -1.25, tv, 0.25, 0.3, 0.34, 1.05, 0, g0);
+          piece(solids, unitBox, '#c0392b', -0.5, tv, 0.18, 0.3, 0.24, 0.3, 0, g0);
+          piece(glows, unitBox, '#9fd3ff', -0.35, tv, 0.24, 0.26, 0.07, 0.01, 0, g0);
+          for (const u of [-1.55, -1.0, -0.5]) piece(solids, unitBox, '#1c1c1c', u, tv, 0.06, 0.34, 0.12, 0.13, 0, g0);
         }
-        const cv = sv - 1.05;
-        if (cv > roadHalf + 0.5 && clearOfRoad(0.9, cv, 0.3, 0.5, 0.05)) {
-          const g0 = groundAt(at(0.9, cv).x, at(0.9, cv).z);
-          piece(solids, unitBox, '#2f6fa8', 0.9, cv, 0.08, 0.24, 0.1, 0.46, 0, g0);
-          piece(solids, unitBox, '#2a5d8b', 0.88, cv, 0.17, 0.2, 0.08, 0.26, 0, g0);
+        if (clearOfRoad(1.2, tv, 0.3, 0.5, 0.05)) {
+          const g0 = groundAt(at(1.2, tv).x, at(1.2, tv).z);
+          piece(solids, unitBox, '#2f6fa8', 1.2, tv, 0.08, 0.24, 0.1, 0.46, 0, g0);
+          piece(solids, unitBox, '#2a5d8b', 1.18, tv, 0.17, 0.2, 0.08, 0.26, 0, g0);
         }
       }
-      // cartel alto con la taza, en el borde de la ruta
+      // cartel alto con la marca, en el borde de la ruta
       {
-        const u = -2.25;
+        const u = -2.45;
         let v = roadHalf + 0.55;
         while (v < roadHalf + 2.5 && !clearOfRoad(u, v, 0.2, 0.2, 0.1)) v += 0.25;
         const q = at(u, v);
         const g0 = groundAt(q.x, q.z);
         piece(solids, unitCyl, '#555a61', u, v, 0.9, 0.08, 1.8, 0.08, 0, g0);
-        piece(solids, unitBox, '#2b1a10', u, v, 1.95, 0.06, 0.52, 1.02, 0, g0);
-        const tex = canvasTexture(768, 384, drawCafeSign);
+        piece(solids, unitBox, '#7e2c12', u, v, 1.95, 1.04, 0.6, 0.06, 0, g0);
+        const tex = canvasTexture(768, 432, drawCafeSign);
         textures.push(tex);
         signs.push(() => tex.userData.redraw(p, lang));
-        textPlane(tex, new THREE.Vector3(q.x, g0 + 1.95, q.z), tan.clone().negate(), 0.98, 0.49, true, 0.035);
+        textPlane(tex, new THREE.Vector3(q.x, g0 + 1.95, q.z), tan.clone().negate(), 0.98, 0.55, true, 0.035);
       }
     } else if (kind === 'parque') {
       // ---------- Parque nacional: pórtico, boletería con barrera, casa del guardaparque y camping ----------
