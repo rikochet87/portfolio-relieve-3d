@@ -444,9 +444,11 @@ export function buildPlaces({ projects, sites, stops, curve, roadDist, height, w
       piece(solids, unitCone, '#4a8c4f', u, v, 0.98 * s, 0.34 * s, 0.5 * s, 0.34 * s, 0, gy);
     };
 
-    if (kind === 'localidad') {
+    if (kind === 'localidad' || kind === 'vialidad') {
       // ---------- Localidad ----------
-      const size = site.h >= 12.5 ? 16 : 11;
+      // En 'vialidad' el lado derecho de la ruta es el predio (más abajo) y las casas van enfrente.
+      const predio = kind === 'vialidad';
+      const size = predio ? 9 : site.h >= 12.5 ? 16 : 11;
       let placed = 0;
       const slots = [];
       for (const row of [1.55, 2.75]) for (let u = -3.6; u <= 3.6; u += 1.05) for (const s of [-1, 1]) slots.push([u + (rnd() - 0.5) * 0.25, s * (row + rnd() * 0.25)]);
@@ -455,6 +457,7 @@ export function buildPlaces({ projects, sites, stops, curve, roadDist, height, w
         if (placed >= size) break;
         if (Math.abs(u) < 0.9 && v < 0 && Math.abs(v) < 2.2) continue; // lugar del mojón
         if (Math.abs(u) < 0.6 && v > 0 && v < 2.2) continue; // el haz del marcador
+        if (predio && v > 0) continue;
         if (!buildable(u, v)) continue;
         const w = 0.55 + rnd() * 0.25;
         const d = 0.5 + rnd() * 0.35;
@@ -479,7 +482,7 @@ export function buildPlaces({ projects, sites, stops, curve, roadDist, height, w
       // tanque de agua elevado
       const freeSpot = (cands, size) => cands.find(([u, v]) => clearOfRoad(u, v, size, size, 0.5) && buildable(u, v)) || cands[0];
       {
-        const [u, v] = freeSpot([[2.2, -3.7], [-2.6, -3.9], [3.2, 3.9], [-3.6, 2.8]], 0.8);
+        const [u, v] = freeSpot(predio ? [[2.2, -3.7], [-2.6, -3.9], [3.4, -2.6]] : [[2.2, -3.7], [-2.6, -3.9], [3.2, 3.9], [-3.6, 2.8]], 0.8);
         const c = at(u, v);
         const gy = groundAt(c.x, c.z);
         for (const [a, b] of [[-0.22, -0.22], [0.22, -0.22], [-0.22, 0.22], [0.22, 0.22]]) {
@@ -492,12 +495,157 @@ export function buildPlaces({ projects, sites, stops, curve, roadDist, height, w
       }
       // antena con baliza roja
       {
-        const [u, v] = freeSpot([[-2.4, 3.9], [2.6, 4.1], [-3.4, -3.6], [0, 4.4]], 0.5);
+        const [u, v] = freeSpot(predio ? [[-4.4, 2.6], [-3.4, -3.6], [0.8, -4.2]] : [[-2.4, 3.9], [2.6, 4.1], [-3.4, -3.6], [0, 4.4]], 0.5);
         const c = at(u, v);
         const gy = groundAt(c.x, c.z);
         piece(solids, unitCyl, '#b8bcc2', u, v, 1.4, 0.06, 2.8, 0.06, 0, gy);
         piece(solids, unitCyl, '#b8bcc2', u, v, 0.15, 0.4, 0.3, 0.4, 0, gy);
         blinkers.push({ pos: new THREE.Vector3(c.x, gy + 2.85, c.z), color: '#ff3b30', phase: i * 0.7, size: 0.9 });
+      }
+      if (predio) {
+        // ---------- El predio de Vialidad: edificio de cuatro pisos con parasoles, playa de
+        // estacionamiento, galpones y el patio con las máquinas viales ----------
+        let vb = roadHalf + 1.7; // frente del edificio
+        while (vb < roadHalf + 4 && !clearOfRoad(-0.2, vb + 0.5, 1.1, 3.0, 0.3)) vb += 0.3;
+        flat('#55585e', -1.9, 1.7, roadHalf + 0.3, vb - 0.4);
+        // autos en la playa
+        const autos = ['#d9d9d9', '#2f6fa8', '#8c1d18', '#1f1f1f', '#e8e8e8', '#5b6b52'];
+        for (let k = 0; k < 6; k++) {
+          const u = -1.55 + k * 0.5;
+          const v = roadHalf + 0.75 + (k % 2) * 0.06;
+          if (!clearOfRoad(u, v, 0.4, 0.24, 0.05)) continue;
+          const q = at(u, v);
+          const gq = groundAt(q.x, q.z);
+          piece(solids, unitBox, autos[k], u, v, 0.08, 0.4, 0.1, 0.22, 0, gq);
+          piece(solids, unitBox, autos[k], u, v + 0.02, 0.16, 0.24, 0.07, 0.2, 0, gq);
+        }
+        // cantero bajo naranja con pasto, delante del edificio
+        {
+          const q = at(-0.2, vb - 0.22);
+          const gq = groundAt(q.x, q.z);
+          piece(solids, unitBox, '#d48a4c', -0.2, vb - 0.22, 0.07, 0.2, 0.14, 2.6, 0, gq);
+          piece(solids, unitBox, '#5f9a3e', -0.2, vb - 0.22, 0.145, 0.17, 0.02, 2.56, 0, gq);
+        }
+        // el edificio
+        const U = -0.2;
+        const D = 2.9; // largo, a lo largo de la ruta
+        const W = 1.0; // fondo
+        const PB = 0.3; // planta baja
+        const PISO = 0.27;
+        const PISOS = 4;
+        const cv = vb + W / 2;
+        const top0 = PB + PISO * PISOS;
+        const { c } = block(solids, unitBox, '#dc9f6c', U, cv, W, top0, D);
+        const gb = groundAt(c.x, c.z);
+        // planta baja vidriada, un poco hacia adentro
+        piece(solids, unitBox, '#2c2f33', U, cv - 0.04, PB / 2, W, PB, D - 0.02, 0, gb);
+        piece(glows, unitBox, '#ffe2b0', U - 0.7, vb + 0.035, 0.12, 0.01, 0.18, 0.5, 0, gb);
+        piece(glows, unitBox, '#cfe3ff', U + 0.6, vb + 0.035, 0.12, 0.01, 0.16, 0.9, 0, gb);
+        // remate marrón arriba
+        piece(solids, unitBox, '#8a6448', U, cv, top0 + 0.08, W + 0.04, 0.16, D + 0.04, 0, gb);
+        piece(solids, unitBox, '#9da3a8', U, cv, top0 + 0.17, W - 0.1, 0.02, D - 0.1, 0, gb);
+        // fachada: ventanas por piso, parasoles horizontales blancos y aletas verticales
+        const caras = [
+          { n: -1, largo: D, at: (t) => [U + t, vb] }, // frente, hacia la ruta
+          { n: 0, largo: W, at: (t) => [U - D / 2, cv + t] }, // cabeceras
+          { n: 0, largo: W, at: (t) => [U + D / 2, cv + t] },
+        ];
+        for (const cara of caras) {
+          const frente = cara.n === -1;
+          const bays = Math.round(cara.largo / 0.19);
+          const paso = cara.largo / bays;
+          // cada pieza sobresale hacia afuera de la cara: el frente hacia la ruta (−v), las cabeceras hacia ±u
+          const out = (t, o) => {
+            const [u, v] = cara.at(t);
+            if (frente) return [u, v - o];
+            return [u + Math.sign(u - U) * o, v];
+          };
+          const dims = (a, b, c2) => (frente ? [a, b, c2] : [c2, b, a]); // [espesor, alto, largo]
+          for (let f = 0; f < PISOS; f++) {
+            const y0 = PB + f * PISO;
+            for (let b = 0; b < bays; b++) {
+              const t = -cara.largo / 2 + paso * (b + 0.5);
+              const [u, v] = out(t, 0.006);
+              const lit = rnd() < 0.42;
+              const [ww, hh, dd] = dims(0.01, 0.1, paso * 0.8);
+              piece(lit ? glows : solids, unitBox, lit ? '#ffdc9c' : '#262a30', u, v, y0 + 0.17, ww, hh, dd, 0, gb);
+            }
+            // parasol: dos listones blancos sobre la ventana
+            for (const dy of [0.235, 0.265]) {
+              const [u, v] = out(0, 0.035);
+              const [ww, hh, dd] = dims(0.07, 0.016, cara.largo + 0.02);
+              piece(solids, unitBox, '#eef0f1', u, v, y0 + dy, ww, hh, dd, 0, gb);
+            }
+          }
+          for (let b = 0; b <= bays; b++) {
+            const t = -cara.largo / 2 + paso * b;
+            const [u, v] = out(t, 0.04);
+            const [ww, hh, dd] = dims(0.08, PISO * PISOS, 0.018);
+            piece(solids, unitBox, '#f3f4f5', u, v, PB + (PISO * PISOS) / 2, ww, hh, dd, 0, gb);
+          }
+        }
+        // galpones: uno largo detrás del edificio y otro grande al costado, con techo de chapa
+        const galpon = (u, v, d, w, h) => {
+          if (!buildable(u, v)) return;
+          const { top, c: gc } = block(solids, unitBox, '#c9c8c2', u, v, w, h, d);
+          bake(solids, gableRoof, '#a3a8ae', new THREE.Vector3(gc.x, top + 0.09, gc.z), rot, new THREE.Vector3(w * 1.05, 0.18, d * 1.02));
+          const gy = groundAt(gc.x, gc.z);
+          // portones hacia el patio
+          for (let k = -1; k <= 1; k += 2) piece(solids, unitBox, '#6e747b', u + k * d * 0.25, v - w / 2 - 0.005, h * 0.4, 0.01, h * 0.7, d * 0.18, 0, gy);
+        };
+        galpon(U - 0.3, vb + 2.05, 2.2, 0.8, 0.42);
+        galpon(U + 3.4, vb + 2.3, 3.2, 1.4, 0.55);
+        // patio de ripio entre los galpones y la ruta
+        flat('#6f6553', 1.9, 5.2, roadHalf + 0.6, vb + 1.55);
+        // máquinas viales: coordenadas propias (l hacia adelante, s al costado) y un ángulo
+        const AMARILLO = '#f2b705';
+        const maquina = (tipo, cu, cv2, a) => {
+          if (!buildable(cu, cv2) || !clearOfRoad(cu, cv2, 0.6, 0.6, 0.15)) return;
+          const q0 = at(cu, cv2);
+          const gq = groundAt(q0.x, q0.z);
+          const ca = Math.cos(a);
+          const sa = Math.sin(a);
+          const mp = (list, geo, col, l, sd, y, w, h, d) => piece(list, geo, col, cu + l * ca - sd * sa, cv2 + l * sa + sd * ca, y, w, h, d, -a, gq);
+          const rueda = (l, sd, r = 0.07) => mp(solids, unitBox, '#1b1b1b', l, sd, r, 0.05, r * 2, r * 2);
+          if (tipo === 'motoniveladora') {
+            mp(solids, unitBox, AMARILLO, 0.08, 0, 0.17, 0.08, 0.06, 0.62); // bastidor
+            mp(solids, unitBox, AMARILLO, -0.2, 0, 0.17, 0.2, 0.15, 0.24); // motor
+            mp(solids, unitBox, AMARILLO, -0.02, 0, 0.3, 0.17, 0.16, 0.16); // cabina
+            mp(glows, unitBox, '#9fd3ff', 0.065, 0, 0.32, 0.14, 0.08, 0.01);
+            mp(solids, unitBox, '#3d4146', 0.12, 0, 0.07, 0.36, 0.06, 0.025); // cuchilla
+            for (const l of [-0.26, -0.12]) for (const sd of [-0.1, 0.1]) rueda(l, sd);
+            for (const sd of [-0.09, 0.09]) rueda(0.36, sd);
+          } else if (tipo === 'retro') {
+            mp(solids, unitBox, AMARILLO, 0, 0, 0.14, 0.2, 0.12, 0.36);
+            mp(solids, unitBox, AMARILLO, -0.05, 0, 0.28, 0.16, 0.17, 0.14);
+            mp(glows, unitBox, '#9fd3ff', 0.025, 0, 0.3, 0.12, 0.08, 0.01);
+            mp(solids, unitBox, '#3d4146', 0.24, 0, 0.08, 0.26, 0.07, 0.06); // pala frontal
+            mp(solids, unitBox, AMARILLO, -0.27, 0, 0.27, 0.035, 0.035, 0.22); // brazo
+            mp(solids, unitBox, AMARILLO, -0.39, 0, 0.16, 0.035, 0.2, 0.035);
+            mp(solids, unitBox, '#3d4146', -0.4, 0, 0.05, 0.08, 0.06, 0.08);
+            for (const l of [-0.11, 0.11]) for (const sd of [-0.11, 0.11]) rueda(l, sd, l < 0 ? 0.08 : 0.06);
+          } else if (tipo === 'volcador') {
+            mp(solids, unitBox, '#d9d9d6', 0.24, 0, 0.18, 0.2, 0.17, 0.16); // cabina
+            mp(glows, unitBox, '#9fd3ff', 0.325, 0, 0.21, 0.16, 0.06, 0.01);
+            mp(solids, unitBox, '#c0392b', -0.1, 0, 0.2, 0.22, 0.15, 0.48); // caja
+            mp(solids, unitBox, '#2b2b2b', 0.05, 0, 0.09, 0.16, 0.04, 0.6);
+            for (const l of [0.24, -0.08, -0.22]) for (const sd of [-0.1, 0.1]) rueda(l, sd, 0.06);
+          } else if (tipo === 'rodillo') {
+            mp(solids, unitBox, AMARILLO, -0.08, 0, 0.13, 0.16, 0.12, 0.26);
+            mp(solids, unitBox, AMARILLO, -0.1, 0, 0.27, 0.13, 0.14, 0.12);
+            mp(solids, unitCyl.clone().rotateZ(Math.PI / 2), '#7b8087', 0.17, 0, 0.08, 0.22, 0.16, 0.16); // rolo
+            for (const sd of [-0.09, 0.09]) rueda(-0.12, sd, 0.07);
+          }
+        };
+        maquina('motoniveladora', 2.4, roadHalf + 1.1, 0.15);
+        maquina('motoniveladora', 3.3, roadHalf + 1.05, 0.1);
+        maquina('retro', 4.3, roadHalf + 1.15, -0.3);
+        maquina('volcador', 2.5, vb + 0.55, 0);
+        maquina('volcador', 3.35, vb + 0.6, 0.05);
+        maquina('rodillo', 4.4, vb + 0.4, 1.4);
+        maquina('motoniveladora', 1.55, vb + 1.15, Math.PI / 2);
+        // árboles del predio
+        for (const [u, v] of [[-2.4, vb + 0.4], [-2.5, vb + 1.6], [-1.9, vb + 2.9], [1.1, vb + 3.0], [5.4, vb + 1.0], [5.3, roadHalf + 1.0]]) tree(u, v, 0.9 + rnd() * 0.4);
       }
     } else if (kind === 'estacion') {
       // ---------- Estación de servicio ----------

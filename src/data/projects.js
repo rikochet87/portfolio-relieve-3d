@@ -13,6 +13,7 @@ export const CATEGORIES = [
 export const PROJECTS = [
   {
     id: 'sig-vial',
+    lugar: 'vialidad', // en el mapa: el predio de Vialidad, con sus máquinas (places.js)
     name: 'SIG Vial Chaco',
     orbit: 0,
     since: '2026-06-10', // primer commit: ordena la ruta
