@@ -179,8 +179,29 @@ const TERRAIN_FRAG = /* glsl */ `
   uniform float uMaxH;
   uniform float uRadius;
   uniform float uRise;
+  uniform vec3 uSun;       // dirección hacia el sol
+  uniform float uDay;      // 1 de día, 0 de noche
+  uniform sampler2D uHMap; // alturas del terreno, para las sombras
+  uniform float uSize;
   varying vec3 vW;
   varying vec3 vN;
+  float hAt(vec2 xz) { return texture2D(uHMap, xz / uSize + 0.5).r * uRise; }
+  // Sombra proyectada: se avanza desde el punto hacia el sol y se mira si algún cerro queda
+  // por encima del rayo. Pasos cada vez más largos: cerca importa el detalle, lejos no.
+  float sombra(vec3 p) {
+    if (uSun.y <= 0.01) return 0.0;
+    float res = 1.0;
+    float s = 0.25;
+    for (int i = 0; i < SOMBRA_PASOS; i++) {
+      vec3 q = p + uSun * s;
+      if (abs(q.x) > uSize * 0.5 || abs(q.z) > uSize * 0.5) break;
+      float d = q.y - hAt(q.xz);
+      res = min(res, clamp(6.0 * d / s, 0.0, 1.0));
+      if (res <= 0.001) break;
+      s += 0.3 + s * SOMBRA_CRECE;
+    }
+    return res;
+  }
   void main() {
     float h = vW.y;
     float t = clamp(h / (uMaxH * max(uRise, 0.001)), 0.0, 1.0);
@@ -188,10 +209,13 @@ const TERRAIN_FRAG = /* glsl */ `
     vec3 c = mix(vec3(0.05, 0.13, 0.11), vec3(0.09, 0.21, 0.12), smoothstep(0.0, 0.25, t));
     c = mix(c, vec3(0.20, 0.19, 0.12), smoothstep(0.3, 0.65, t));
     c = mix(c, vec3(0.46, 0.41, 0.32), smoothstep(0.7, 1.0, t));
-    // sombreado de relieve (luz desde el noroeste, como un hillshade clásico)
-    vec3 L = normalize(vec3(-1.0, 1.3, -1.0));
-    float hs = clamp(dot(normalize(vN), L), 0.0, 1.0);
-    c *= 0.3 + hs * 1.0;
+    // sombreado de relieve con el sol de la hora elegida, más la sombra que proyectan los cerros.
+    // De noche, una luz de luna tenue y fija.
+    vec3 N = normalize(vN);
+    float hs = clamp(dot(N, uSun), 0.0, 1.0);
+    if (hs > 0.0) hs *= sombra(vW + N * 0.04);
+    float luna = 0.2 + 0.28 * clamp(dot(N, normalize(vec3(-0.4, 1.0, 0.5))), 0.0, 1.0);
+    c *= mix(luna, 0.3 + hs * 1.0, uDay);
     // curvas de nivel: normales cada 0,6 y maestras cada 3
     float f = h / 0.6;
     float line = 1.0 - smoothstep(fwidth(f) * 0.5, fwidth(f) * 1.5, abs(fract(f - 0.5) - 0.5));
@@ -223,6 +247,7 @@ const WATER_VERT = /* glsl */ `
 `;
 const WATER_FRAG = /* glsl */ `
   uniform float uTime;
+  uniform float uDay;
   uniform float uRadius;
   varying vec3 vW;
   void main() {
@@ -230,6 +255,7 @@ const WATER_FRAG = /* glsl */ `
     float rip = 0.5 + 0.5 * sin(vW.x * 1.3 + uTime * 0.8) * sin(vW.z * 1.1 - uTime * 0.6);
     vec3 c = mix(vec3(0.05, 0.17, 0.27), vec3(0.12, 0.34, 0.47), rip * 0.5);
     float a = 0.82 * (1.0 - smoothstep(0.66, 0.95, r));
+    c *= mix(0.55, 1.0, uDay);
     gl_FragColor = vec4(c, a);
   }
 `;
@@ -246,6 +272,7 @@ const ROAD_VERT = /* glsl */ `
   }
 `;
 const ROAD_FRAG = /* glsl */ `
+  uniform float uDay;
   uniform float uEdge;   // dónde termina la calzada y empieza la banquina (0..1 desde el eje)
   varying vec2 vUv;
   float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
@@ -265,6 +292,7 @@ const ROAD_FRAG = /* glsl */ `
     c = mix(c, vec3(1.0, 0.78, 0.28), center);
     // la banquina se funde con el terreno
     float fade = 1.0 - smoothstep(0.9, 1.0, acr);
+    c *= mix(0.5, 1.0, uDay);
     gl_FragColor = vec4(c, fade);
   }
 `;
@@ -322,6 +350,9 @@ export async function createTerrain({ canvas, projects, reducedMotion, lang = 'e
   const clock = new THREE.Clock();
   const uTime = { value: 0 };
   const uRise = { value: reducedMotion ? 1 : 0 };
+  // el sol: dirección y cuánto de día es (ver setHour)
+  const uSun = { value: new THREE.Vector3(-0.72, 0.64, -0.32).normalize() };
+  const uDay = { value: 1 };
 
   // Un proyecto con `junto` comparte el lugar (y el marcador) de otro: no suma parada a la ruta.
   const hostOf = (id) => projects.find((p) => p.id === id)?.junto || id;
@@ -502,19 +533,37 @@ export async function createTerrain({ canvas, projects, reducedMotion, lang = 'e
     if (h > maxH) maxH = h;
   }
   geo.computeVertexNormals();
+  // las mismas alturas en una textura, para que el shader calcule la sombra de los cerros
+  const hmap = (() => {
+    const n = quality.seg + 1;
+    const step = SIZE / quality.seg;
+    const data = new Uint16Array(n * n);
+    for (let i = 0; i < pos.count; i++) {
+      const ix = Math.round((pos.getX(i) + SIZE / 2) / step);
+      const iz = Math.round((pos.getZ(i) + SIZE / 2) / step);
+      data[iz * n + ix] = THREE.DataUtils.toHalfFloat(pos.getY(i));
+    }
+    const t = new THREE.DataTexture(data, n, n, THREE.RedFormat, THREE.HalfFloatType);
+    t.magFilter = t.minFilter = THREE.LinearFilter;
+    t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
+    t.needsUpdate = true;
+    return t;
+  })();
   const terrain = new THREE.Mesh(
     geo,
     new THREE.ShaderMaterial({
       vertexShader: TERRAIN_VERT,
       fragmentShader: TERRAIN_FRAG,
-      uniforms: { uBg: { value: new THREE.Vector3(6 / 255, 10 / 255, 16 / 255) }, uMaxH: { value: maxH }, uRadius: { value: SIZE * 0.5 }, uRise },
+      // menos pasos para la sombra en equipos modestos
+      defines: { SOMBRA_PASOS: quality.name === 'baja' ? 12 : 22, SOMBRA_CRECE: quality.name === 'baja' ? '0.2' : '0.12' },
+      uniforms: { uBg: { value: new THREE.Vector3(6 / 255, 10 / 255, 16 / 255) }, uMaxH: { value: maxH }, uRadius: { value: SIZE * 0.5 }, uRise, uSun, uDay, uHMap: { value: hmap }, uSize: { value: SIZE } },
     })
   );
   scene.add(terrain);
 
   const water = new THREE.Mesh(
     new THREE.CircleGeometry(SIZE * 0.5, 96).rotateX(-Math.PI / 2),
-    new THREE.ShaderMaterial({ vertexShader: WATER_VERT, fragmentShader: WATER_FRAG, uniforms: { uTime, uRadius: { value: SIZE * 0.5 } }, transparent: true, depthWrite: false })
+    new THREE.ShaderMaterial({ vertexShader: WATER_VERT, fragmentShader: WATER_FRAG, uniforms: { uTime, uDay, uRadius: { value: SIZE * 0.5 } }, transparent: true, depthWrite: false })
   );
   scene.add(water);
 
@@ -561,7 +610,7 @@ export async function createTerrain({ canvas, projects, reducedMotion, lang = 'e
       new THREE.ShaderMaterial({
         vertexShader: ROAD_VERT,
         fragmentShader: ROAD_FRAG,
-        uniforms: { uRise, uEdge: { value: ROAD_W / (ROAD_W + SHOULDER) } },
+        uniforms: { uRise, uDay, uEdge: { value: ROAD_W / (ROAD_W + SHOULDER) } },
         transparent: true,
         side: THREE.DoubleSide,
         polygonOffset: true,
@@ -676,10 +725,30 @@ export async function createTerrain({ canvas, projects, reducedMotion, lang = 'e
   void bridgeCount;
 
   // ---------- Luz (solo para vegetación y vehículos; el terreno tiene su propio sombreado) ----------
-  scene.add(new THREE.HemisphereLight(0xa8c0ff, 0x1c2a1c, 1.3));
+  const hemi = new THREE.HemisphereLight(0xa8c0ff, 0x1c2a1c, 1.3);
+  scene.add(hemi);
   const sunLight = new THREE.DirectionalLight(0xfff0dc, 2.2);
   sunLight.position.set(-30, 40, -30);
   scene.add(sunLight);
+  // Hora del día: el sol sale por el este (+x), pasa por el norte (−z) a unos 63° al mediodía,
+  // como en el Chaco, y se pone por el oeste. De noche queda una luz tenue de luna.
+  const solCalido = new THREE.Color(0xffa860);
+  const solAlto = new THREE.Color(0xfff0dc);
+  function setHour(hour) {
+    const a = ((hour - 6) / 12) * Math.PI;
+    const d = new THREE.Vector3(Math.cos(a), Math.sin(a) * 0.89, -Math.sin(a) * 0.45).normalize();
+    const day = THREE.MathUtils.smoothstep(d.y, -0.06, 0.12);
+    uSun.value.copy(d);
+    uDay.value = day;
+    // la luz de los objetos: sol (o luna de noche) y cielo
+    const luna = new THREE.Vector3(-0.4, 1, 0.5).normalize();
+    sunLight.position.copy(day > 0.01 ? d : luna).multiplyScalar(60);
+    sunLight.intensity = 0.35 + 1.85 * day;
+    sunLight.color.copy(solCalido).lerp(solAlto, THREE.MathUtils.smoothstep(d.y, 0.05, 0.45));
+    if (day < 0.01) sunLight.color.set(0x9fb4ff);
+    hemi.intensity = 0.45 + 0.85 * day;
+  }
+  setHour(15);
 
   // ---------- Vegetación y rocas (instanciadas) ----------
   function part(geo, color, y, sx = 1, sy = 1, sz = 1) {
@@ -1395,6 +1464,7 @@ export async function createTerrain({ canvas, projects, reducedMotion, lang = 'e
 
   return {
     setLang: (l) => places.setLang(l),
+    setHour,
     focus,
     unfocus,
     setFilter,

@@ -20,6 +20,7 @@ const UI = {
     prev: 'Anterior',
     next: 'Siguiente',
     choose: '¿Cuál querés ver?',
+    'sol.label': 'Hora del día',
   },
   en: {
     'nav.about': 'About',
@@ -38,6 +39,7 @@ const UI = {
     prev: 'Previous',
     next: 'Next',
     choose: 'Which one?',
+    'sol.label': 'Time of day',
   },
 };
 
@@ -218,6 +220,7 @@ function onFrame(data, sun, isFocused) {
     el.style.transform = `translate(${d.x}px, ${d.y - dy}px) translate(-50%, -100%)`;
   }
   if (chooserFor) placeChooser();
+  $('#sol').classList.toggle('is-hidden', isFocused);
   sunLabelEl.classList.toggle('is-hidden', !sun.visible || isFocused);
   sunLabelEl.style.transform = `translate(${sun.x}px, ${sun.y}px) translate(-50%, 0)`;
 }
@@ -474,6 +477,24 @@ function fromHash() {
   else if (!id) deselect();
 }
 window.addEventListener('hashchange', fromHash);
+
+// ---------- Hora del día ----------
+// Mueve el sol: cambia la luz y la sombra que proyectan los cerros sobre el terreno.
+{
+  const range = $('#sol-range');
+  const label = $('#sol-hora');
+  const show = () => {
+    const v = Number(range.value);
+    const h = Math.floor(v);
+    const mm = Math.round((v - h) * 60);
+    label.textContent = `${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+  };
+  range.addEventListener('input', () => {
+    show();
+    galaxy?.setHour?.(Number(range.value));
+  });
+  show();
+}
 
 // ---------- Arranque ----------
 applyLang();
