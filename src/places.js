@@ -2,6 +2,8 @@
 //   orbit 0 (destacados)            → localidad: casas, tanque de agua y antena
 //   orbit 1 (productos)             → estación de servicio: surtidores con las tecnologías
 //   orbit 2 (trabajo para clientes) → paraje: un local al costado del camino
+// Un proyecto puede pedir otro lugar con `lugar` (projects.js): 'cafe' es un parador de ruta
+// y 'parque' la entrada de un parque nacional, con boletería y camping.
 // Cada lugar tiene su cartel verde de entrada (nombre, una cifra y la fecha) y su mojón
 // con el kilómetro. La ruta arranca en el km 0 con el primer proyecto y sigue por fecha.
 import * as THREE from 'three';
@@ -164,6 +166,83 @@ function drawTotem(g, w, h, p) {
     g.arc(w - 30, y + rh / 2, rh * 0.13, 0, Math.PI * 2);
     g.fill();
   });
+}
+
+// Cartel alto del parador: una taza, el nombre y qué es.
+function drawCafeSign(g, w, h, p, lang) {
+  g.fillStyle = '#3a2418';
+  roundRect(g, 4, 4, w - 8, h - 8, 22);
+  g.fill();
+  g.strokeStyle = p.color;
+  g.lineWidth = 10;
+  roundRect(g, 18, 18, w - 36, h - 36, 14);
+  g.stroke();
+  // taza con humo
+  const cx = 104;
+  const cy = h / 2 + 16;
+  g.fillStyle = '#f3e7d3';
+  g.beginPath();
+  g.moveTo(cx - 46, cy - 34);
+  g.lineTo(cx + 46, cy - 34);
+  g.lineTo(cx + 36, cy + 34);
+  g.lineTo(cx - 36, cy + 34);
+  g.closePath();
+  g.fill();
+  g.lineWidth = 10;
+  g.strokeStyle = '#f3e7d3';
+  g.beginPath();
+  g.arc(cx + 48, cy - 8, 16, -Math.PI / 2, Math.PI / 2);
+  g.stroke();
+  g.strokeStyle = 'rgba(243,231,211,0.7)';
+  g.lineWidth = 6;
+  for (const dx of [-16, 8]) {
+    g.beginPath();
+    g.moveTo(cx + dx, cy - 46);
+    g.bezierCurveTo(cx + dx - 14, cy - 62, cx + dx + 14, cy - 76, cx + dx, cy - 92);
+    g.stroke();
+  }
+  g.fillStyle = '#ffffff';
+  g.textAlign = 'left';
+  g.textBaseline = 'middle';
+  const name = p.name.toUpperCase();
+  fitText(g, name, w - 230, 92);
+  g.fillText(name, 196, h * 0.4);
+  g.fillStyle = p.color;
+  const sub = lang === 'es' ? 'PARADOR · ABIERTO 24 H' : 'ROADSIDE CAFÉ · OPEN 24 H';
+  fitText(g, sub, w - 230, 46, 600);
+  g.fillText(sub, 198, h * 0.7);
+}
+
+// Pórtico del parque: letras claras talladas sobre madera oscura.
+function drawParkSign(g, w, h, lang) {
+  g.fillStyle = '#5a3a22';
+  g.fillRect(0, 0, w, h);
+  g.fillStyle = 'rgba(0,0,0,0.12)';
+  for (let y = 0; y < h; y += h / 4) g.fillRect(0, y, w, 4);
+  g.strokeStyle = '#e9d9b4';
+  g.lineWidth = 6;
+  g.strokeRect(12, 12, w - 24, h - 24);
+  g.fillStyle = '#f1e4c2';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  const t = lang === 'es' ? 'PARQUE NACIONAL' : 'NATIONAL PARK';
+  fitText(g, t, w - 70, h * 0.42);
+  g.fillText(t, w / 2, h * 0.42);
+  const sub = lang === 'es' ? 'Bienvenidos · área protegida' : 'Welcome · protected area';
+  fitText(g, sub, w - 90, h * 0.2, 500);
+  g.fillText(sub, w / 2, h * 0.74);
+}
+
+// Cartelito de la boletería.
+function drawBooth(g, w, h, lang) {
+  g.fillStyle = '#efe4c8';
+  g.fillRect(0, 0, w, h);
+  g.fillStyle = '#3d2a18';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  const t = lang === 'es' ? 'BOLETERÍA' : 'TICKETS';
+  fitText(g, t, w - 24, h * 0.62);
+  g.fillText(t, w / 2, h / 2 + 2);
 }
 
 function drawPitch(g, w, h) {
@@ -354,7 +433,26 @@ export function buildPlaces({ projects, sites, stops, curve, roadDist, height, w
     const walls = ['#ddd2bf', '#cdbfa6', '#e6ddcd', '#c9b79a', '#d8cdb9'];
     const roofs = ['#9a4b33', '#874231', '#6d7378', '#a55a3a'];
 
-    if (p.orbit === 0) {
+    const kind = p.lugar || ['localidad', 'estacion', 'paraje'][p.orbit];
+    // Una planta apoyada en el suelo, en tramos: un camino largo de un solo bloque sobre una
+    // ladera se volvería un muro.
+    const flat = (col, u0, u1, v0, v1, step = 0.7) => {
+      const nu = Math.max(1, Math.ceil((u1 - u0) / step));
+      const nv = Math.max(1, Math.ceil((v1 - v0) / step));
+      const du = (u1 - u0) / nu;
+      const dv = (v1 - v0) / nv;
+      for (let a = 0; a < nu; a++) for (let b = 0; b < nv; b++) block(solids, unitBox, col, u0 + du * (a + 0.5), v0 + dv * (b + 0.5), dv + 0.02, 0.03, du + 0.02);
+    };
+    const tree = (u, v, s = 1) => {
+      if (!buildable(u, v) || !clearOfRoad(u, v, 0.5 * s, 0.5 * s, 0.2)) return;
+      const c = at(u, v);
+      const gy = groundAt(c.x, c.z);
+      piece(solids, unitCyl, '#5b4130', u, v, 0.15 * s, 0.07 * s, 0.34 * s, 0.07 * s, 0, gy);
+      piece(solids, unitCone, rnd() < 0.5 ? '#2f6b3a' : '#3c7d45', u, v, 0.62 * s, 0.5 * s, 0.75 * s, 0.5 * s, 0, gy);
+      piece(solids, unitCone, '#4a8c4f', u, v, 0.98 * s, 0.34 * s, 0.5 * s, 0.34 * s, 0, gy);
+    };
+
+    if (kind === 'localidad') {
       // ---------- Localidad ----------
       const size = site.h >= 12.5 ? 16 : 11;
       let placed = 0;
@@ -409,7 +507,7 @@ export function buildPlaces({ projects, sites, stops, curve, roadDist, height, w
         piece(solids, unitCyl, '#b8bcc2', u, v, 0.15, 0.4, 0.3, 0.4, 0, gy);
         blinkers.push({ pos: new THREE.Vector3(c.x, gy + 2.85, c.z), color: '#ff3b30', phase: i * 0.7, size: 0.9 });
       }
-    } else if (p.orbit === 1) {
+    } else if (kind === 'estacion') {
       // ---------- Estación de servicio ----------
       let v0 = roadHalf + 1.25;
       while (v0 < roadHalf + 4 && !clearOfRoad(0, v0 + 0.5, 2.6, 2.4, 0.35)) v0 += 0.4;
@@ -458,14 +556,171 @@ export function buildPlaces({ projects, sites, stops, curve, roadDist, height, w
         tex.userData.redraw(p);
         textPlane(tex, new THREE.Vector3(c.x, g0 + 1.6, c.z), tan.clone().negate(), 0.62, 1.04, true, 0.052);
       }
+    } else if (kind === 'cafe') {
+      // ---------- Parador de ruta: playón, galería con mesas y el cartel alto ----------
+      let sv = roadHalf + 1.7; // frente del local
+      while (sv < roadHalf + 4.5 && !clearOfRoad(0, sv + 0.45, 1.0, 2.2, 0.3)) sv += 0.3;
+      // playón de ripio entre la ruta y el local
+      flat('#7d725f', -1.9, 1.9, roadHalf + 0.25, sv - 0.05);
+      // el local
+      const { top, c } = block(solids, unitBox, '#efe3cb', 0, sv + 0.45, 0.9, 0.6, 2.1);
+      const gy = groundAt(c.x, c.z);
+      bake(solids, gableRoof, '#b8532b', new THREE.Vector3(c.x, top + 0.14, c.z), rot, new THREE.Vector3(1.05, 0.28, 2.25));
+      // galería: techo de madera sobre postes, hacia el playón
+      const GY = top - gy - 0.14;
+      piece(solids, unitBox, '#7a4a2a', 0, sv - 0.32, GY, 0.68, 0.05, 2.2, 0, gy);
+      for (let u = -1.0; u <= 1.01; u += 0.5) piece(solids, unitBox, '#6a3f22', u, sv - 0.62, GY / 2, 0.05, GY, 0.05, 0, gy);
+      piece(glows, unitBox, '#ffe2b0', 0, sv - 0.32, GY - 0.03, 0.5, 0.01, 1.9, 0, gy);
+      // ventanales encendidos
+      piece(glows, unitBox, '#ffd9a0', -0.45, sv - 0.005, 0.22, 0.01, 0.2, 0.7, 0, gy);
+      piece(glows, unitBox, '#ffd9a0', 0.55, sv - 0.005, 0.22, 0.01, 0.2, 0.55, 0, gy);
+      // nombre sobre la galería
+      {
+        const fp = at(0, sv - 0.01);
+        fp.y = gy + GY + 0.11;
+        const tex = canvasTexture(512, 128, drawBrand);
+        textures.push(tex);
+        tex.userData.redraw(p);
+        textPlane(tex, fp, side.clone().negate(), 1.2, 0.17, false);
+      }
+      // mesas bajo la galería y en la terraza del costado, con sombrillas naranjas
+      for (const u of [-0.75, -0.25, 0.25, 0.75]) {
+        piece(solids, unitCyl, '#e2dccf', u, sv - 0.3, 0.1, 0.18, 0.03, 0.18, 0, gy);
+        piece(solids, unitCyl, '#8b8b8b', u, sv - 0.3, 0.05, 0.03, 0.1, 0.03, 0, gy);
+      }
+      for (const [u, v] of [[1.45, sv + 0.05], [1.85, sv + 0.55], [1.45, sv + 1.0]]) {
+        if (!buildable(u, v) || !clearOfRoad(u, v, 0.5, 0.5, 0.2)) continue;
+        const q = at(u, v);
+        const qy = groundAt(q.x, q.z);
+        piece(solids, unitCyl, '#e2e2e2', u, v, 0.1, 0.18, 0.03, 0.18, 0, qy);
+        piece(solids, unitCyl, '#cfcfcf', u, v, 0.26, 0.02, 0.4, 0.02, 0, qy);
+        piece(solids, unitCone, '#e8692e', u, v, 0.48, 0.46, 0.13, 0.46, 0, qy);
+      }
+      // un camión y un auto estacionados
+      {
+        const tv = roadHalf + 0.75;
+        if (clearOfRoad(-0.95, tv, 0.36, 1.5, 0.05)) {
+          const g0 = groundAt(at(-0.95, tv).x, at(-0.95, tv).z);
+          piece(solids, unitBox, '#e9ecef', -1.05, tv, 0.25, 0.3, 0.34, 1.05, 0, g0);
+          piece(solids, unitBox, '#c0392b', -0.3, tv, 0.18, 0.3, 0.24, 0.3, 0, g0);
+          piece(glows, unitBox, '#9fd3ff', -0.15, tv, 0.24, 0.26, 0.07, 0.01, 0, g0);
+          for (const u of [-1.35, -0.8, -0.3]) piece(solids, unitBox, '#1c1c1c', u, tv, 0.06, 0.34, 0.12, 0.13, 0, g0);
+        }
+        const cv = sv - 1.05;
+        if (cv > roadHalf + 0.5 && clearOfRoad(0.9, cv, 0.3, 0.5, 0.05)) {
+          const g0 = groundAt(at(0.9, cv).x, at(0.9, cv).z);
+          piece(solids, unitBox, '#2f6fa8', 0.9, cv, 0.08, 0.24, 0.1, 0.46, 0, g0);
+          piece(solids, unitBox, '#2a5d8b', 0.88, cv, 0.17, 0.2, 0.08, 0.26, 0, g0);
+        }
+      }
+      // cartel alto con la taza, en el borde de la ruta
+      {
+        const u = -2.25;
+        let v = roadHalf + 0.55;
+        while (v < roadHalf + 2.5 && !clearOfRoad(u, v, 0.2, 0.2, 0.1)) v += 0.25;
+        const q = at(u, v);
+        const g0 = groundAt(q.x, q.z);
+        piece(solids, unitCyl, '#555a61', u, v, 0.9, 0.08, 1.8, 0.08, 0, g0);
+        piece(solids, unitBox, '#2b1a10', u, v, 1.95, 0.06, 0.52, 1.02, 0, g0);
+        const tex = canvasTexture(768, 384, drawCafeSign);
+        textures.push(tex);
+        signs.push(() => tex.userData.redraw(p, lang));
+        textPlane(tex, new THREE.Vector3(q.x, g0 + 1.95, q.z), tan.clone().negate(), 0.98, 0.49, true, 0.035);
+      }
+    } else if (kind === 'parque') {
+      // ---------- Parque nacional: pórtico, boletería con barrera, casa del guardaparque y camping ----------
+      let v0 = roadHalf + 1.5; // pórtico
+      while (v0 < roadHalf + 4 && !clearOfRoad(0, v0 + 2.2, 4.5, 4.4, 0.3)) v0 += 0.3;
+      // camino de acceso de ripio
+      flat('#8f7f5f', -0.38, 0.38, roadHalf + 0.15, v0 + 4.6);
+      const g0 = (() => {
+        const q = at(0, v0);
+        return groundAt(q.x, q.z);
+      })();
+      // pórtico de troncos con el cartel
+      for (const u of [-0.62, 0.62]) piece(solids, unitCyl, '#6b4a2e', u, v0, 0.66, 0.13, 1.42, 0.13, 0, g0);
+      piece(solids, unitBox, '#5d3f26', 0, v0, 1.38, 0.14, 0.12, 1.7, 0, g0);
+      piece(solids, unitBox, '#4a3220', 0, v0, 1.08, 0.06, 0.4, 1.12, 0, g0);
+      {
+        const q = at(0, v0);
+        const tex = canvasTexture(768, 256, drawParkSign);
+        textures.push(tex);
+        signs.push(() => tex.userData.redraw(lang));
+        textPlane(tex, new THREE.Vector3(q.x, g0 + 1.08, q.z), side.clone().negate(), 1.08, 0.36, true, 0.035);
+      }
+      // boletería a la derecha del acceso, con su barrera
+      const bv = v0 + 1.0;
+      {
+        const { top, c } = block(solids, unitBox, '#9a6a42', 0.85, bv, 0.5, 0.42, 0.5);
+        bake(solids, hipRoof, '#2f5d3a', new THREE.Vector3(c.x, top + 0.1, c.z), rot, new THREE.Vector3(0.66, 0.2, 0.66));
+        const gy = groundAt(c.x, c.z);
+        // ventanilla hacia el acceso
+        piece(glows, unitBox, '#ffe0a8', 0.595, bv, 0.27, 0.22, 0.14, 0.01, 0, gy);
+        const tex = canvasTexture(256, 72, drawBooth);
+        textures.push(tex);
+        signs.push(() => tex.userData.redraw(lang));
+        const fp = at(0.85, bv - 0.26);
+        fp.y = top - 0.06;
+        textPlane(tex, fp, side.clone().negate(), 0.42, 0.12, false);
+        // barrera roja y blanca cruzando el camino
+        piece(solids, unitBox, '#d8d8d8', 0.55, bv - 0.3, 0.2, 0.06, 0.4, 0.06, 0, gy);
+        for (let k = 0; k < 4; k++) piece(solids, unitBox, k % 2 ? '#f2f2f2' : '#d23a2a', 0.42 - k * 0.24 - 0.12, bv - 0.3, 0.36, 0.035, 0.035, 0.24, 0, gy);
+      }
+      // casa del guardaparque, con el mástil y la bandera
+      {
+        const u = -1.55;
+        const v = v0 + 1.3;
+        if (buildable(u, v) && clearOfRoad(u, v, 0.9, 1.1, 0.3)) {
+          const { top, c } = block(solids, unitBox, '#a77b52', u, v, 0.8, 0.46, 1.05);
+          bake(solids, gableRoof, '#2f5d3a', new THREE.Vector3(c.x, top + 0.13, c.z), rot, new THREE.Vector3(0.95, 0.26, 1.18));
+          const gy = groundAt(c.x, c.z);
+          piece(glows, unitBox, '#ffd28a', u - 0.2, v - 0.405, 0.25, 0.01, 0.12, 0.16, 0, gy);
+          piece(glows, unitBox, '#ffd28a', u + 0.22, v - 0.405, 0.25, 0.01, 0.12, 0.16, 0, gy);
+          const fu = u - 0.75;
+          const fv = v - 0.15;
+          piece(solids, unitCyl, '#d9dce0', fu, fv, 0.8, 0.03, 1.6, 0.03, 0, gy);
+          const stripes = ['#74acdf', '#ffffff', '#74acdf'];
+          stripes.forEach((col, k) => piece(solids, unitBox, col, fu + 0.18, fv, 1.5 - k * 0.075, 0.01, 0.075, 0.34, 0, gy));
+          piece(solids, unitCyl, '#f6b40e', fu + 0.18, fv, 1.425, 0.03, 0.012, 0.03, 0, gy);
+        }
+      }
+      // camping al fondo: carpas, mesas y el fogón
+      const tents = ['#e8692e', '#3a7bd5', '#f2c230', '#5aa05a', '#d64545', '#8e5bd1'];
+      let tk = 0;
+      for (const [u, v] of [[-1.9, 3.2], [-1.1, 3.8], [1.2, 3.1], [1.9, 3.75], [-1.6, 4.6], [1.5, 4.55], [0.9, 5.2], [-0.8, 5.25]]) {
+        const tv = v0 + v;
+        if (!buildable(u, tv) || !clearOfRoad(u, tv, 0.6, 0.6, 0.3)) continue;
+        const q = at(u, tv);
+        const gy = groundAt(q.x, q.z);
+        q.y = gy + 0.15;
+        bake(solids, gableRoof, tents[tk++ % tents.length], q, rot + (rnd() - 0.5) * 1.2 + (tk % 2) * Math.PI / 2, new THREE.Vector3(0.44, 0.32, 0.6));
+      }
+      {
+        const u = 0;
+        const v = v0 + 4.0;
+        const q = at(u, v);
+        const gy = groundAt(q.x, q.z);
+        piece(solids, unitCyl, '#6e6a64', u, v, 0.02, 0.32, 0.05, 0.32, 0, gy);
+        piece(solids, unitBox, '#5b4130', u, v, 0.06, 0.04, 0.04, 0.24, 0.6, gy);
+        piece(solids, unitBox, '#5b4130', u, v, 0.06, 0.04, 0.04, 0.24, -0.6, gy);
+        blinkers.push({ pos: new THREE.Vector3(q.x, gy + 0.16, q.z), color: '#ff9a3c', phase: 0, size: 0.55, steady: true });
+        for (const [a, b] of [[-0.7, 0.2], [0.65, -0.25]]) {
+          piece(solids, unitBox, '#7a5434', u + a, v + b, 0.13, 0.22, 0.04, 0.42, 0, gy);
+          piece(solids, unitBox, '#6a482c', u + a, v + b - 0.18, 0.07, 0.07, 0.03, 0.42, 0, gy);
+          piece(solids, unitBox, '#6a482c', u + a, v + b + 0.18, 0.07, 0.07, 0.03, 0.42, 0, gy);
+        }
+      }
+      // monte alrededor
+      for (const [u, v] of [[-2.6, 1.0], [2.5, 0.8], [-2.9, 2.5], [2.9, 2.2], [-2.7, 4.0], [2.8, 4.2], [-2.2, 5.6], [2.2, 5.7], [0, 6.3], [-1.4, 6.2], [1.5, 6.4], [3.3, 3.2], [-3.4, 3.3]]) {
+        tree(u + (rnd() - 0.5) * 0.4, v0 + v + (rnd() - 0.5) * 0.4, 0.85 + rnd() * 0.45);
+      }
     } else {
       // ---------- Paraje: un local al costado del camino ----------
       let sv = roadHalf + 1.5;
       while (sv < roadHalf + 4 && !clearOfRoad(0, sv - 0.2, 1.4, 1.8, 0.3)) sv += 0.4;
-      const isCafe = p.id === 'tropico';
-      const wall = isCafe ? '#e8dcc6' : '#d6d0c4';
+      const wall = '#d6d0c4';
       const { top, c } = block(solids, unitBox, wall, 0, sv, 0.85, 0.5, 1.6);
-      const roofCol = isCafe ? '#b8532b' : '#6d7378';
+      const roofCol = '#6d7378';
       bake(solids, gableRoof, roofCol, new THREE.Vector3(c.x, top + 0.13, c.z), rot, new THREE.Vector3(1.0, 0.26, 1.75));
       const gy = groundAt(c.x, c.z);
       // cartel sobre la fachada
@@ -478,16 +733,6 @@ export function buildPlaces({ projects, sites, stops, curve, roadDist, height, w
       textPlane(tex, fp, side.clone().negate(), 1.2, 0.18, false);
       // vidriera encendida
       piece(glows, unitBox, '#ffd9a0', 0, sv - 0.43, 0.2, 0.01, 0.22, 0.9, 0, gy);
-      if (isCafe) {
-        // mesas con sombrillas naranjas en la vereda
-        for (const u of [-0.55, 0, 0.55]) {
-          const q = at(u, sv - 0.8);
-          const qy = groundAt(q.x, q.z);
-          piece(solids, unitCyl, '#e2e2e2', u, sv - 0.8, 0.08, 0.16, 0.16, 0.16, 0, qy);
-          piece(solids, unitCyl, '#cfcfcf', u, sv - 0.8, 0.26, 0.02, 0.36, 0.02, 0, qy);
-          piece(solids, unitCone, '#e8692e', u, sv - 0.8, 0.46, 0.42, 0.12, 0.42, 0, qy);
-        }
-      }
       if (p.id === 'cancha') {
         // la cancha de fútbol 5, del otro lado de la ruta, con sus torres de luz
         let pv = -(roadHalf + 2.3);

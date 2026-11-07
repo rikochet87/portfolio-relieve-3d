@@ -3,7 +3,7 @@
 Portfolio personal hecho con **Three.js + Vite**: un mapa topográfico 3D recorrido por una ruta, donde cada proyecto es un lugar sobre el camino. Un guiño a mi trabajo en GIS y vialidad. Bilingüe ES/EN.
 
 - **La ruta va en orden cronológico**: el primer proyecto es el km 0 y los demás siguen por fecha de creación (`since`).
-- **Cada categoría es un tipo de lugar**: los destacados son localidades (casas, tanque de agua, antena), los productos son estaciones de servicio y los trabajos para clientes, parajes con su local (la cancha tiene su cancha y el café, sus mesas).
+- **Cada categoría es un tipo de lugar**: los destacados son localidades (casas, tanque de agua, antena), los productos son estaciones de servicio y los trabajos para clientes, parajes con su local (la cancha tiene su cancha). Algunos proyectos tienen un lugar propio: Trópico Café es un parador de ruta con galería, mesas y camiones en el playón, y Actas Guardaparques, la entrada a un parque nacional con pórtico, boletería, casa del guardaparque y camping.
 - **Señalización vial**: cartel verde de entrada con el nombre, una cifra y la fecha; mojón con el kilómetro; en las estaciones, el tótem y los surtidores muestran las tecnologías.
 - Terreno procedural con lomas, curvas de nivel, sombreado de relieve y tintas hipsométricas; un río y un arroyo con su planicie, y puentes donde la ruta los cruza (`RIVERS` en `src/terrain.js`). Cada lugar se asienta en una explanada a la altura de la ruta.
 - Vegetación instanciada (montes y palmares junto al agua) y vehículos circulando.
@@ -25,7 +25,7 @@ npm run preview
 index.html               maquetado (barra superior, hero, panel, HUD, overlays)
 src/main.js              UI: textos ES/EN, panel de proyecto, "Sobre mí", lista, rutas #/id
 src/terrain.js           escena 3D: terreno, ruta, vegetación, marcadores, cámara, HUD
-src/places.js            lugares sobre la ruta: localidades, estaciones, parajes, carteles y mojones
+src/places.js            lugares sobre la ruta: localidades, estaciones, parajes, el parador, el parque, carteles y mojones
 src/data/projects.js     datos de los proyectos  <- editar acá
 src/style.css            estilos base
 src/relieve.css          estilos propios de esta versión (HUD)
@@ -36,6 +36,7 @@ public/img/              capturas de los proyectos
 
 1. Sumá un objeto en `src/data/projects.js`:
    - `orbit`: 0 destacado (localidad), 1 producto (estación de servicio), 2 cliente (paraje).
+   - `lugar` (opcional): `'cafe'` o `'parque'` para usar uno de esos lugares en vez del de su categoría.
    - `since`: fecha de inicio (`AAAA-MM-DD`, el primer commit). Ordena la ruta y sale en el cartel.
    - `sign`: la segunda línea del cartel de entrada, en `es` y `en`. Una cifra corta.
    - `stack`: las primeras cuatro tecnologías van en los surtidores y el tótem de las estaciones.

@@ -186,6 +186,7 @@ export const PROJECTS = [
   },
   {
     id: 'actas',
+    lugar: 'parque', // en el mapa: la entrada de un parque nacional (places.js)
     name: 'Actas Guardaparques',
     orbit: 1,
     since: '2026-11-05', // primer commit: ordena la ruta
@@ -289,6 +290,7 @@ export const PROJECTS = [
   },
   {
     id: 'tropico',
+    lugar: 'cafe', // en el mapa: un parador de ruta (places.js)
     name: 'Trópico Café',
     orbit: 2,
     since: '2026-11-04', // primer commit: ordena la ruta
