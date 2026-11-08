@@ -18,33 +18,31 @@
 .hud__scale b { font-weight: 500; }
 .hud__coords { min-width: 270px; font-variant-numeric: tabular-nums; white-space: pre; }
 
-/* hora del día: un deslizador arriba del HUD */
+/* hora del día: una línea fina con el lugar, la hora y el deslizador; sin caja, arriba del HUD */
 .sol {
-  position: fixed; right: 24px; bottom: 82px; z-index: 12; width: 250px;
-  padding: 9px 14px 11px; border: 1px solid var(--line); border-radius: 12px;
-  background: var(--glass); backdrop-filter: blur(10px); transition: opacity .4s;
-  font-family: ui-monospace, 'SFMono-Regular', Consolas, monospace; font-size: 11.5px; color: var(--ink-2);
+  position: fixed; right: 24px; bottom: 86px; z-index: 12; display: flex; align-items: center; gap: 8px;
+  padding: 4px 10px 4px 8px; border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 999px;
+  background: rgba(6, 10, 16, 0.35); backdrop-filter: blur(6px); transition: opacity .4s;
+  font-family: ui-monospace, 'SFMono-Regular', Consolas, monospace; font-size: 10px; letter-spacing: .02em; color: var(--ink-2);
 }
 .sol.is-hidden { opacity: 0; pointer-events: none; }
-.sol__top { display: flex; align-items: center; gap: 6px; margin-bottom: 7px; }
+.sol__top { display: flex; align-items: center; gap: 5px; margin: 0; }
+.sol__top b { color: var(--accent); font-weight: 500; opacity: .9; font-variant-numeric: tabular-nums; }
+.sol__top [data-i18n], .sol__largo { display: none; }
+.sol__icon { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 6px 1px rgba(255, 196, 107, 0.5); }
 .sol__lugar {
-  padding: 0 0 1px; border: 0; border-bottom: 1px dashed currentColor; background: none; color: var(--ink); font: inherit; cursor: pointer;
+  padding: 0 0 1px; border: 0; border-bottom: 1px dashed currentColor; background: none; color: var(--ink-2);
+  font: inherit; font-size: 9.5px; letter-spacing: .06em; cursor: pointer;
 }
 .sol__lugar:disabled { border-bottom: 0; cursor: default; }
 .sol__lugar:hover:not(:disabled), .sol__lugar:focus-visible { color: var(--accent); outline: none; }
-.sol__corto { display: none; }
-.sol__top b { margin-left: auto; color: var(--accent); font-weight: 600; font-variant-numeric: tabular-nums; }
-.sol__icon { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px 2px rgba(255, 196, 107, 0.55); }
 .sol__range {
-  -webkit-appearance: none; appearance: none; width: 100%; height: 4px; border-radius: 4px; margin: 0;
+  -webkit-appearance: none; appearance: none; width: 78px; height: 2px; border-radius: 2px; margin: 0; opacity: .85;
   background: linear-gradient(90deg, #22325a 0%, #22325a 22%, #e88a3c 27%, #ffd77a 52%, #e88a3c 78%, #22325a 83%, #22325a 100%); cursor: pointer;
 }
-.sol__range::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: #fff6e0; border: 2px solid var(--accent); box-shadow: 0 0 10px rgba(255, 196, 107, 0.7); }
-.sol__range::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: #fff6e0; border: 2px solid var(--accent); }
-.sol__pie { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; font-size: 10.5px; color: var(--ink-3); }
-.sol__ahora { padding: 2px 8px; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--ink-2); font: inherit; cursor: pointer; }
-.sol__ahora:hover, .sol__ahora:focus-visible { border-color: var(--accent); color: var(--accent); outline: none; }
-.sol__range:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.sol__range::-webkit-slider-thumb { -webkit-appearance: none; width: 11px; height: 11px; border-radius: 50%; background: #fff6e0; border: 1.5px solid var(--accent); box-shadow: 0 0 6px rgba(255, 196, 107, 0.6); }
+.sol__range::-moz-range-thumb { width: 9px; height: 9px; border-radius: 50%; background: #fff6e0; border: 1.5px solid var(--accent); }
+.sol__range:focus-visible { outline: 1px solid var(--accent); outline-offset: 4px; }
 
 /* los filtros quedan a la izquierda para no chocar con el HUD */
 @media (min-width: 761px) {
@@ -57,22 +55,8 @@
 
 @media (max-width: 760px) {
   .hud { bottom: 72px; right: 16px; padding: 6px 10px; gap: 10px; }
-  /* en el celular: una línea fina abajo a la izquierda, con la hora chica; sin caja */
-  .sol {
-    left: 18px; right: auto; bottom: 84px; width: auto; display: flex; align-items: center; gap: 8px;
-    padding: 4px 10px 4px 8px; border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 999px;
-    background: rgba(6, 10, 16, 0.35); backdrop-filter: blur(6px); font-size: 10px; letter-spacing: .02em;
-  }
-  .sol__top { margin: 0; gap: 5px; }
-  .sol__top b { font-weight: 500; opacity: .9; }
-  .sol__top [data-i18n], .sol__pie { display: none; }
-  .sol__largo { display: none; }
-  .sol__corto { display: inline; }
-  .sol__lugar { font-size: 9.5px; letter-spacing: .06em; color: var(--ink-2); }
-  .sol__icon { width: 6px; height: 6px; box-shadow: 0 0 6px 1px rgba(255, 196, 107, 0.5); }
-  .sol__range { width: 78px; height: 2px; opacity: .85; }
-  .sol__range::-webkit-slider-thumb { width: 11px; height: 11px; border-width: 1.5px; box-shadow: 0 0 6px rgba(255, 196, 107, 0.6); }
-  .sol__range::-moz-range-thumb { width: 9px; height: 9px; border-width: 1.5px; }
+  /* en el celular va abajo a la izquierda, a la altura del HUD */
+  .sol { left: 18px; right: auto; bottom: 84px; }
   .hud__coords { display: none; }
 }
 

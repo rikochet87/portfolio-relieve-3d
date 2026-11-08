@@ -23,7 +23,6 @@ const UI = {
     choose: '¿Cuál querés ver?',
     'sol.label': 'Hora en',
     'sol.cambiar': 'Cambiar a',
-    'sol.now': 'Ahora',
   },
   en: {
     'nav.about': 'About',
@@ -44,7 +43,6 @@ const UI = {
     choose: 'Which one?',
     'sol.label': 'Time in',
     'sol.cambiar': 'Switch to',
-    'sol.now': 'Now',
   },
 };
 
@@ -508,16 +506,16 @@ const solUI = (() => {
     if (alt) boton.title = `${t('sol.cambiar')} ${alt.nombre}`;
     range.setAttribute('aria-label', `${t('sol.label')} ${lugar.nombre}`);
     const { sale, pone } = saleYSePone(lugar, ahoraEn(lugar).fecha);
-    const pie = $('#sol-dia');
     if (sale !== null && pone !== null) {
       // el riel: noche azul, amanecer y atardecer naranjas, mediodía amarillo, en sus horas de hoy
       const pc = (h) => `${((h / 23.75) * 100).toFixed(1)}%`;
       const mid = (sale + pone) / 2;
       range.style.background = `linear-gradient(90deg, #22325a 0%, #22325a ${pc(sale - 0.5)}, #e88a3c ${pc(sale + 0.6)}, #ffd77a ${pc(mid)}, #e88a3c ${pc(pone - 0.6)}, #22325a ${pc(pone + 0.5)}, #22325a 100%)`;
-      pie.textContent = `${lang === 'es' ? 'Sol' : 'Sun'} ${hhmm(sale)}–${hhmm(pone)}`;
+      // a qué hora sale y se pone, al pasar el puntero por el riel
+      range.title = `${lang === 'es' ? 'Sol' : 'Sun'} ${hhmm(sale)}–${hhmm(pone)}`;
     } else {
       range.style.background = '';
-      pie.textContent = '';
+      range.title = '';
     }
   };
   const irAhora = () => {
@@ -529,7 +527,6 @@ const solUI = (() => {
     show();
     aplicar();
   });
-  $('#sol-ahora').addEventListener('click', irAhora);
   // cambiar de lugar: la hora pasa a la actual del otro lugar
   boton.addEventListener('click', () => {
     const alt = otro();
