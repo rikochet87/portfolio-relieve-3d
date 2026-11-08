@@ -51,13 +51,19 @@
 
 @media (max-width: 760px) {
   .hud { bottom: 72px; right: 16px; padding: 6px 10px; gap: 10px; }
-  /* en el celular, una píldora chica a la izquierda del HUD: la hora y el deslizador, nada más */
-  .sol { left: 16px; right: auto; bottom: 78px; width: auto; display: flex; align-items: center; gap: 9px; padding: 5px 11px 5px 9px; border-radius: 999px; font-size: 11px; }
-  .sol__top { margin: 0; gap: 6px; }
+  /* en el celular: una línea fina abajo a la izquierda, con la hora chica; sin caja */
+  .sol {
+    left: 18px; right: auto; bottom: 84px; width: auto; display: flex; align-items: center; gap: 8px;
+    padding: 4px 10px 4px 8px; border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 999px;
+    background: rgba(6, 10, 16, 0.35); backdrop-filter: blur(6px); font-size: 10px; letter-spacing: .02em;
+  }
+  .sol__top { margin: 0; gap: 5px; }
+  .sol__top b { font-weight: 500; opacity: .9; }
   .sol__top [data-i18n], .sol__pie { display: none; }
-  .sol__icon { width: 8px; height: 8px; }
-  .sol__range { width: 92px; }
-  .sol__range::-webkit-slider-thumb { width: 14px; height: 14px; }
+  .sol__icon { width: 6px; height: 6px; box-shadow: 0 0 6px 1px rgba(255, 196, 107, 0.5); }
+  .sol__range { width: 78px; height: 2px; opacity: .85; }
+  .sol__range::-webkit-slider-thumb { width: 11px; height: 11px; border-width: 1.5px; box-shadow: 0 0 6px rgba(255, 196, 107, 0.6); }
+  .sol__range::-moz-range-thumb { width: 9px; height: 9px; border-width: 1.5px; }
   .hud__coords { display: none; }
 }
 
