@@ -20,7 +20,7 @@
 
 /* hora del día: un deslizador arriba del HUD */
 .sol {
-  position: fixed; right: 24px; bottom: 82px; z-index: 12; width: 230px;
+  position: fixed; right: 24px; bottom: 82px; z-index: 12; width: 250px;
   padding: 9px 14px 11px; border: 1px solid var(--line); border-radius: 12px;
   background: var(--glass); backdrop-filter: blur(10px); transition: opacity .4s;
   font-family: ui-monospace, 'SFMono-Regular', Consolas, monospace; font-size: 11.5px; color: var(--ink-2);
@@ -31,10 +31,13 @@
 .sol__icon { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px 2px rgba(255, 196, 107, 0.55); }
 .sol__range {
   -webkit-appearance: none; appearance: none; width: 100%; height: 4px; border-radius: 4px; margin: 0;
-  background: linear-gradient(90deg, #22325a 0%, #e88a3c 12%, #ffd77a 50%, #e88a3c 88%, #22325a 100%); cursor: pointer;
+  background: linear-gradient(90deg, #22325a 0%, #22325a 22%, #e88a3c 27%, #ffd77a 52%, #e88a3c 78%, #22325a 83%, #22325a 100%); cursor: pointer;
 }
 .sol__range::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: #fff6e0; border: 2px solid var(--accent); box-shadow: 0 0 10px rgba(255, 196, 107, 0.7); }
 .sol__range::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: #fff6e0; border: 2px solid var(--accent); }
+.sol__pie { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; font-size: 10.5px; color: var(--ink-3); }
+.sol__ahora { padding: 2px 8px; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--ink-2); font: inherit; cursor: pointer; }
+.sol__ahora:hover, .sol__ahora:focus-visible { border-color: var(--accent); color: var(--accent); outline: none; }
 .sol__range:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
 
 /* los filtros quedan a la izquierda para no chocar con el HUD */
@@ -48,7 +51,7 @@
 
 @media (max-width: 760px) {
   .hud { bottom: 72px; right: 16px; padding: 6px 10px; gap: 10px; }
-  .sol { right: 16px; bottom: 120px; width: 190px; padding: 7px 10px 9px; }
+  .sol { right: 16px; bottom: 120px; width: 210px; padding: 7px 10px 9px; }
   .hud__coords { display: none; }
 }
 

@@ -1,6 +1,7 @@
 import './style.css';
 import './relieve.css';
 import { PROJECTS, CATEGORIES } from './data/projects.js';
+import { ahoraEnResistencia, saleYSePone, hhmm } from './sol.js';
 
 const UI = {
   es: {
@@ -20,7 +21,8 @@ const UI = {
     prev: 'Anterior',
     next: 'Siguiente',
     choose: '¿Cuál querés ver?',
-    'sol.label': 'Hora del día',
+    'sol.label': 'Hora en Resistencia',
+    'sol.now': 'Ahora',
   },
   en: {
     'nav.about': 'About',
@@ -39,7 +41,8 @@ const UI = {
     prev: 'Previous',
     next: 'Next',
     choose: 'Which one?',
-    'sol.label': 'Time of day',
+    'sol.label': 'Time in Resistencia',
+    'sol.now': 'Now',
   },
 };
 
@@ -129,6 +132,7 @@ function applyLang() {
   renderAbout();
   renderList();
   if (current) renderPanel(current);
+  solUI?.show();
 }
 
 // ---------- Filtros por categoría ----------
@@ -479,22 +483,38 @@ function fromHash() {
 window.addEventListener('hashchange', fromHash);
 
 // ---------- Hora del día ----------
-// Mueve el sol: cambia la luz y la sombra que proyectan los cerros sobre el terreno.
-{
+// La hora es la de Resistencia (UTC−3), hoy allá, y el sol es el de verdad sobre la ciudad
+// (src/sol.js): desde cualquier parte del mundo se ve la misma luz. Arranca en la hora actual.
+const solUI = (() => {
   const range = $('#sol-range');
   const label = $('#sol-hora');
+  const set = (h) => {
+    range.value = String(Math.round(h * 4) / 4);
+    show();
+  };
   const show = () => {
-    const v = Number(range.value);
-    const h = Math.floor(v);
-    const mm = Math.round((v - h) * 60);
-    label.textContent = `${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+    label.textContent = hhmm(Number(range.value));
+    const { sale, pone } = saleYSePone(ahoraEnResistencia().fecha);
+    if (sale !== null && pone !== null) {
+      // el riel: noche azul, amanecer y atardecer naranjas, mediodía amarillo, en sus horas de hoy
+      const pc = (h) => `${((h / 23.75) * 100).toFixed(1)}%`;
+      const mid = (sale + pone) / 2;
+      range.style.background = `linear-gradient(90deg, #22325a 0%, #22325a ${pc(sale - 0.5)}, #e88a3c ${pc(sale + 0.6)}, #ffd77a ${pc(mid)}, #e88a3c ${pc(pone - 0.6)}, #22325a ${pc(pone + 0.5)}, #22325a 100%)`;
+    }
+    if (sale !== null && pone !== null) $('#sol-dia').textContent = `${lang === 'es' ? 'Sol' : 'Sun'} ${hhmm(sale)}–${hhmm(pone)}`;
   };
   range.addEventListener('input', () => {
     show();
     galaxy?.setHour?.(Number(range.value));
   });
-  show();
-}
+  $('#sol-ahora').addEventListener('click', () => {
+    const h = ahoraEnResistencia().hora;
+    set(h);
+    galaxy?.setHour?.(h);
+  });
+  set(ahoraEnResistencia().hora);
+  return { show };
+})();
 
 // ---------- Arranque ----------
 applyLang();

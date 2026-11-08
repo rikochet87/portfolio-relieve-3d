@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { MapControls } from 'three/addons/controls/MapControls.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { buildPlaces } from './places.js';
+import { ahoraEnResistencia, direccionSol } from './sol.js';
 
 const SIZE = 130; // lado del terreno en unidades (1 unidad = 100 m en el HUD)
 const SEG = 260;
@@ -730,13 +731,14 @@ export async function createTerrain({ canvas, projects, reducedMotion, lang = 'e
   const sunLight = new THREE.DirectionalLight(0xfff0dc, 2.2);
   sunLight.position.set(-30, 40, -30);
   scene.add(sunLight);
-  // Hora del día: el sol sale por el este (+x), pasa por el norte (−z) a unos 63° al mediodía,
-  // como en el Chaco, y se pone por el oeste. De noche queda una luz tenue de luna.
+  // Hora del día: el sol real sobre Resistencia, Chaco, para la hora elegida de hoy allá
+  // (src/sol.js). De noche queda una luz tenue de luna.
   const solCalido = new THREE.Color(0xffa860);
   const solAlto = new THREE.Color(0xfff0dc);
+  const hoy = ahoraEnResistencia().fecha;
   function setHour(hour) {
-    const a = ((hour - 6) / 12) * Math.PI;
-    const d = new THREE.Vector3(Math.cos(a), Math.sin(a) * 0.89, -Math.sin(a) * 0.45).normalize();
+    const sp = direccionSol(hour, hoy);
+    const d = new THREE.Vector3(sp.x, sp.y, sp.z).normalize();
     const day = THREE.MathUtils.smoothstep(d.y, -0.06, 0.12);
     uSun.value.copy(d);
     uDay.value = day;
@@ -748,7 +750,7 @@ export async function createTerrain({ canvas, projects, reducedMotion, lang = 'e
     if (day < 0.01) sunLight.color.set(0x9fb4ff);
     hemi.intensity = 0.45 + 0.85 * day;
   }
-  setHour(15);
+  setHour(ahoraEnResistencia().hora);
 
   // ---------- Vegetación y rocas (instanciadas) ----------
   function part(geo, color, y, sx = 1, sy = 1, sz = 1) {
