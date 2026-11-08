@@ -779,13 +779,20 @@ export async function createTerrain({ canvas, projects, reducedMotion, lang = 'e
       part(new THREE.CylinderGeometry(0.03, 0.05, 1.15, 5), '#7d6244', 0.57),
       part(new THREE.ConeGeometry(0.55, 0.22, 7).rotateX(Math.PI), '#5e9e4a', 1.16),
     ]),
+    // lapacho en flor: copa ancha e irregular; el color (rosado o amarillo) lo pone cada instancia
+    lapacho: mergeGeometries([
+      part(new THREE.CylinderGeometry(0.04, 0.07, 0.62, 5), '#4a3426', 0.31),
+      part(new THREE.IcosahedronGeometry(0.36, 0), '#ffffff', 0.86, 1.15, 0.72, 1.15),
+      part(new THREE.IcosahedronGeometry(0.24, 0).translate(0.22, 0, 0.08), '#f3f3f3', 0.98, 1, 0.8, 1),
+      part(new THREE.IcosahedronGeometry(0.22, 0).translate(-0.2, 0, -0.12), '#e8e8e8', 0.95, 1, 0.8, 1),
+    ]),
     bush: part(new THREE.IcosahedronGeometry(0.22, 0), '#3e7a3a', 0.12, 1.2, 0.7, 1.2),
     rock: part(new THREE.DodecahedronGeometry(0.22, 0), '#857b6c', 0.07, 1, 0.6, 1),
   };
   const CAPS = { broadleaf: 2600, tall: 1200, palm: 500, bush: 1800, rock: 220 };
   for (const kind in CAPS) CAPS[kind] = Math.round(CAPS[kind] * quality.veg);
   await yieldFrame();
-  const vegSpots = { broadleaf: [], tall: [], palm: [], bush: [], rock: [] };
+  const vegSpots = { broadleaf: [], tall: [], palm: [], lapacho: [], bush: [], rock: [] };
   {
     let seed = 1234567;
     const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
@@ -827,11 +834,29 @@ export async function createTerrain({ canvas, projects, reducedMotion, lang = 'e
       }
     }
   }
+  // Lapachos en flor: el 15 % de los árboles (algarrobos, árboles altos y palmeras) pasa a ser
+  // lapacho, elegidos al azar entre los de copa (una palmera no se vuelve lapacho). Casi todos
+  // rosados, alguno amarillo.
+  {
+    let seed = 7654321;
+    const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+    const total = vegSpots.broadleaf.length + vegSpots.tall.length + vegSpots.palm.length;
+    let n = Math.round(total * 0.15);
+    const ROSADOS = ['#e46aa6', '#ef8cbd', '#d65597', '#f29ac6'];
+    while (n > 0 && vegSpots.broadleaf.length + vegSpots.tall.length > 0) {
+      const from = rnd() < vegSpots.broadleaf.length / (vegSpots.broadleaf.length + vegSpots.tall.length) ? vegSpots.broadleaf : vegSpots.tall;
+      const s = from.splice(Math.floor(rnd() * from.length), 1)[0];
+      s.color = rnd() < 0.12 ? '#f2c230' : ROSADOS[Math.floor(rnd() * ROSADOS.length)];
+      vegSpots.lapacho.push(s);
+      n--;
+    }
+  }
   const vegMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
   const vegMeshes = Object.entries(vegSpots).map(([kind, spots]) => {
-    const mesh = new THREE.InstancedMesh(KINDS[kind], vegMat, spots.length);
+    const mesh = new THREE.InstancedMesh(KINDS[kind], vegMat, Math.max(1, spots.length));
+    mesh.count = spots.length;
     const c = new THREE.Color();
-    spots.forEach((s, i) => mesh.setColorAt(i, c.setScalar(s.tint)));
+    spots.forEach((s, i) => mesh.setColorAt(i, s.color ? c.set(s.color).multiplyScalar(0.85 + s.tint * 0.15) : c.setScalar(s.tint)));
     mesh.userData.spots = spots;
     scene.add(mesh);
     return mesh;
