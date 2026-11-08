@@ -112,13 +112,46 @@ function makeRivers() {
 // Llanura chaqueña: lomas bajas, ondulaciones chicas, algún bajo con agua y los cauces.
 // river: 2 = con valle y cauce; 0 = como si no hubiera río (la rasante de la ruta: cruza el valle
 // a la altura de las orillas, en puente).
+// Una loma pedida a mano: la cresta sigue una línea, con su altura en cada punto (el HUD da
+// Z = 48 + h × 9 m, así que 87 m es h ≈ 4,3), y baja en campana hasta R a los costados.
+const CRESTA = [
+  [9, -10, 3.3],
+  [7, -14, 3.8],
+  [-4, -13, 4.3],
+  [-11.5, -15.5, 4.55],
+  [-5, -19, 3.9],
+];
+const CRESTA_R = 6.5;
+function cerro(x, z) {
+  let best = Infinity;
+  let hc = 0;
+  for (let i = 0; i < CRESTA.length - 1; i++) {
+    const [ax, az, ah] = CRESTA[i];
+    const [bx, bz, bh] = CRESTA[i + 1];
+    const dx = bx - ax;
+    const dz = bz - az;
+    const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz)));
+    const d = Math.hypot(x - ax - dx * t, z - az - dz * t);
+    if (d < best) {
+      best = d;
+      hc = ah + (bh - ah) * t;
+    }
+  }
+  if (best >= CRESTA_R) return 0;
+  const k = 1 - best / CRESTA_R;
+  return hc * k * k * (3 - 2 * k); // campana: redondeada arriba, suave abajo
+}
+
 function makeHeight(sites, rivers) {
   // relieve sin explanadas ni cauces
   const base = (x, z) => {
     const n = fbm(x * 0.05, z * 0.05);
     const ridge = 1 - Math.abs(fbm(x * 0.03 + 40, z * 0.03 - 12, 4) * 2 - 1);
     const detail = fbm(x * 0.21 + 7, z * 0.21 - 3, 3) - 0.5; // irregularidades chicas
-    return n * 7 + ridge * ridge * 3 + detail * 1.2 - 2.1;
+    const h = n * 7 + ridge * ridge * 3 + detail * 1.2 - 2.1;
+    // la loma entre TrazoCAD, Gestión de Cancha y el arroyo, con la cresta a unos 87 m (HUD)
+    const c = cerro(x, z);
+    return c > 0 ? Math.max(h, c + detail * 0.5) : h;
   };
   // Explanada en cada lugar: el pueblo, la estación o el local se asientan en terreno parejo, a la
   // altura media de su zona (no en una cima: así no queda una meseta con escalones). Va antes de
