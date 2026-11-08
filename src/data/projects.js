@@ -118,6 +118,7 @@ export const PROJECTS = [
   },
   {
     id: 'calcuobra',
+    lugar: 'obra', // en el mapa: un edificio de cinco pisos en construcción, con grúa y obreros (places.js)
     name: 'CalcuObra',
     orbit: 1,
     since: '2026-10-08', // primer commit: ordena la ruta

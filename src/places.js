@@ -3,7 +3,8 @@
 //   orbit 1 (productos)             → estación de servicio: surtidores con las tecnologías
 //   orbit 2 (trabajo para clientes) → paraje: un local al costado del camino
 // Un proyecto puede pedir otro lugar con `lugar` (projects.js): 'cafe' es un parador de ruta
-// y 'parque' la entrada de un parque nacional, con boletería y camping.
+// 'parque' la entrada de un parque nacional, con boletería y camping, y 'obra' un edificio
+// de cinco pisos a medio construir, con la grúa torre, el andamio y los obreros.
 // Cada lugar tiene su cartel verde de entrada (nombre, una cifra y la fecha) y su mojón
 // con el kilómetro. La ruta arranca en el km 0 con el primer proyecto y sigue por fecha.
 import * as THREE from 'three';
@@ -270,7 +271,9 @@ const gableRoof = (() => {
   g.translate(0, -0.125, 0).scale(1.16, 1 / 0.75, 1);
   return g.toNonIndexed();
 })();
-for (const g of [unitBox, unitCyl, unitCone, hipRoof, gableRoof]) g.deleteAttribute('uv');
+// el tambor del trompito: más angosto en la boca
+const potGeo = new THREE.CylinderGeometry(0.35, 0.5, 1, 10).toNonIndexed();
+for (const g of [unitBox, unitCyl, unitCone, hipRoof, gableRoof, potGeo]) g.deleteAttribute('uv');
 
 // Uniforme de guardaparque nacional: sombrero de ala ancha y pantalón verde oliva, camisa
 // beige y chaleco gris oscuro con el escudo dorado en el pecho.
@@ -314,7 +317,15 @@ function makePerson(scale, look = UNIF) {
     return sh;
   });
   box(0.03, 0.032, 0.03, piel, 0, 0.172, 0, g); // cabeza
-  if (look.pelo) box(0.032, 0.012, 0.032, mat(look.pelo), 0, 0.192, -0.002, g);
+  if (look.pelo && !look.casco) box(0.032, 0.012, 0.032, mat(look.pelo), 0, 0.192, -0.002, g);
+  if (look.casco) {
+    // casco de obra: la copa y el ala
+    const copa = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.019, 0.016, 12), mat(look.casco));
+    copa.position.y = 0.196;
+    const ala = new THREE.Mesh(new THREE.CylinderGeometry(0.023, 0.023, 0.003, 12), mat(look.casco));
+    ala.position.y = 0.189;
+    g.add(copa, ala);
+  }
   if (look.sombrero) {
     const ala = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.036, 0.004, 14), mat(look.sombrero));
     ala.position.y = 0.19;
@@ -339,6 +350,46 @@ function drawBuffet(g, w, h) {
   g.fillText('BUFFET', w / 2, h / 2 - 3);
 }
 
+// Cartel de obra: el aviso de la obra con el color del proyecto y la franja de peligro abajo.
+function drawObraSign(g, w, h, p, lang) {
+  g.fillStyle = '#f7f5ef';
+  g.fillRect(0, 0, w, h);
+  g.fillStyle = p.color;
+  g.fillRect(0, 0, w, h * 0.22);
+  g.fillStyle = '#1b1d21';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  const top = lang === 'es' ? 'OBRA EN CONSTRUCCIÓN' : 'UNDER CONSTRUCTION';
+  fitText(g, top, w - 60, h * 0.13, 800);
+  g.fillText(top, w / 2, h * 0.115);
+  fitText(g, p.name, w - 80, h * 0.27, 800);
+  g.fillText(p.name, w / 2, h * 0.43);
+  g.fillStyle = '#3d4148';
+  fitText(g, p.sign[lang], w - 80, h * 0.11, 500);
+  g.fillText(p.sign[lang], w / 2, h * 0.66);
+  // franja de peligro amarilla y negra
+  const y0 = h * 0.82;
+  const hh = h - y0;
+  g.fillStyle = '#f2b705';
+  g.fillRect(0, y0, w, hh);
+  g.save();
+  g.beginPath();
+  g.rect(0, y0, w, hh);
+  g.clip();
+  g.fillStyle = '#1b1d21';
+  const s = h * 0.09;
+  for (let x = -hh; x < w + hh; x += s * 2) {
+    g.beginPath();
+    g.moveTo(x, h);
+    g.lineTo(x + s, h);
+    g.lineTo(x + s + hh, y0);
+    g.lineTo(x + hh, y0);
+    g.closePath();
+    g.fill();
+  }
+  g.restore();
+}
+
 export function buildPlaces({ projects, sites, stops, curve, roadDist, height, water, roadHalf, lang, quality }) {
   const root = new THREE.Group();
   const solids = [];
@@ -347,22 +398,41 @@ export function buildPlaces({ projects, sites, stops, curve, roadDist, height, w
   const blinkers = [];
   const guardaparques = []; // recorridos de la gente que camina (guardaparques, el mozo, clientes)
   const partidos = []; // canchas con jugadores
+  const gruas = []; // grúas torre que giran llevando ladrillos
+  const tambores = []; // tambores de los mixers, que giran
   const textures = [];
 
   const tmpM = new THREE.Matrix4();
   const tmpQ = new THREE.Quaternion();
-  const tmpE = new THREE.Euler();
+  const tmpE = new THREE.Euler(0, 0, 0, 'YXZ');
   const color = new THREE.Color();
-  function bake(list, geo, col, pos, rotY, scale) {
-    tmpE.set(0, rotY, 0);
-    tmpQ.setFromEuler(tmpE);
-    tmpM.compose(pos, tmpQ, scale);
-    const g = geo.clone().applyMatrix4(tmpM);
+  function paint(g, col) {
     color.set(col);
     const n = g.attributes.position.count;
     const c = new Float32Array(n * 3);
     for (let i = 0; i < n; i++) c.set([color.r, color.g, color.b], i * 3);
     g.setAttribute('color', new THREE.BufferAttribute(c, 3));
+  }
+  // rotX inclina la pieza sobre su eje x, después de girarla rotY
+  function bake(list, geo, col, pos, rotY, scale, rotX = 0) {
+    tmpE.set(rotX, rotY, 0);
+    tmpQ.setFromEuler(tmpE);
+    tmpM.compose(pos, tmpQ, scale);
+    const g = geo.clone().applyMatrix4(tmpM);
+    paint(g, col);
+    list.push(g);
+  }
+  // una barra fina de a hasta b: caños del andamio, el reticulado de la grúa
+  const UP = new THREE.Vector3(0, 1, 0);
+  const tmpV = new THREE.Vector3();
+  function rod(list, col, a, b, t = 0.015) {
+    tmpV.subVectors(b, a);
+    const len = tmpV.length();
+    if (len < 1e-4) return;
+    tmpQ.setFromUnitVectors(UP, tmpV.divideScalar(len));
+    tmpM.compose(new THREE.Vector3().addVectors(a, b).multiplyScalar(0.5), tmpQ, new THREE.Vector3(t, len, t));
+    const g = unitBox.clone().applyMatrix4(tmpM);
+    paint(g, col);
     list.push(g);
   }
 
@@ -568,10 +638,11 @@ export function buildPlaces({ projects, sites, stops, curve, roadDist, height, w
     const ROPA = ['#d64545', '#3a7bd5', '#f2c230', '#2e9e6a', '#e8692e', '#8e5bd1', '#ececec'];
     const K = 1.5; // un poco más grandes que a escala, para que se vean desde arriba
     // giro: hacia dónde mira (si no, al azar); sobre: altura extra, para sentarla en una silla
-    const persona = (u, v, { sentada = false, ropa, mochila = false, guarda = false, giro: mira, sobre = 0 } = {}) => {
+    // casco y chaleco: obreros; base: altura absoluta del piso donde está (una losa)
+    const persona = (u, v, { sentada = false, ropa, mochila = false, guarda = false, giro: mira, sobre = 0, casco, chaleco, base } = {}) => {
       if (!buildable(u, v) || !clearOfRoad(u, v, 0.1, 0.1, 0.1)) return;
       const q = at(u, v);
-      const gq = groundAt(q.x, q.z);
+      const gq = base ?? groundAt(q.x, q.z);
       const col = guarda ? UNIF.chaleco : ropa || ROPA[Math.floor(rnd() * ROPA.length)];
       const piel = PIEL[Math.floor(rnd() * PIEL.length)];
       const giro = mira ?? rnd() * Math.PI * 2;
@@ -591,6 +662,12 @@ export function buildPlaces({ projects, sites, stops, curve, roadDist, height, w
         }
         // la mochila, detrás: el frente de la persona es (cos giro, −sin giro) en (u, v)
         if (mochila) pz(unitBox, '#5a4a3a', -Math.cos(giro) * 0.03 * K, Math.sin(giro) * 0.03 * K, 0.12, 0.04, 0.06, 0.03);
+        if (chaleco) pz(unitBox, chaleco, 0, 0, 0.117, 0.054, 0.066, 0.039);
+      }
+      if (casco) {
+        const hy = sentada ? 0.135 : 0.175; // altura de la cabeza
+        pz(unitCyl, casco, 0, 0, hy + 0.024, 0.04, 0.02, 0.04);
+        pz(unitCyl, casco, 0, 0, hy + 0.015, 0.05, 0.004, 0.05);
       }
     };
     if (kind === 'localidad' || kind === 'vialidad') {
@@ -928,6 +1005,428 @@ export function buildPlaces({ projects, sites, stops, curve, roadDist, height, w
         signs.push(() => tex.userData.redraw(p, lang));
         textPlane(tex, new THREE.Vector3(q.x, g0 + 1.95, q.z), tan.clone().negate(), 0.98, 0.55, true, 0.035);
       }
+    } else if (kind === 'obra') {
+      // ---------- Obra en construcción: un edificio de cinco pisos a medio hacer, con la grúa
+      // torre, el andamio, el obrador, el mixer y los obreros trabajando ----------
+      let Y0 = roadHalf + 0.6; // frente del cerco
+      while (Y0 < roadHalf + 4 && !clearOfRoad(0, Y0 + 1.5, 3.0, 4.5, 0.25)) Y0 += 0.3;
+      const Y1 = Y0 + 3.0; // fondo del cerco
+      const UA = -2.25; // costados del cerco
+      const UB = 2.25;
+      // el terreno de la obra, tierra removida, y la entrada de ripio desde la ruta
+      flat('#8a7356', UA, UB, Y0, Y1);
+      flat('#7d725f', 0.3, 1.7, roadHalf + 0.25, Y0 + 0.05, 0.5);
+
+      // ----- el edificio -----
+      const BU = 0.35; // centro, a lo largo de la ruta
+      const D = 2.0; // largo, a lo largo de la ruta
+      const W = 1.3; // fondo
+      const vb = Y0 + 1.45; // frente
+      const BV = vb + W / 2;
+      const FL = 0.38; // alto de cada piso
+      const LOSA = 0.05;
+      const COL = 0.07;
+      // plano, a la altura de la esquina más alta, sobre la platea de hormigón (que llega hasta el andamio)
+      let hiG = -Infinity;
+      let loG = Infinity;
+      for (const [a, b] of [[-D / 2, -0.35], [D / 2, -0.35], [-D / 2, W], [D / 2, W], [0, W / 2]]) {
+        const q = at(BU + a, vb + b);
+        const gq = groundAt(q.x, q.z);
+        hiG = Math.max(hiG, gq);
+        loG = Math.min(loG, gq);
+      }
+      const B = Math.max(hiG, water + 0.1) + 0.05; // nivel de la platea
+      const V3 = (x, y, z) => new THREE.Vector3(x, y, z);
+      const wpt = (u, v, y) => {
+        const c = at(u, v);
+        c.y = B + y;
+        return c;
+      };
+      // pieza a una altura sobre la platea; w a lo ancho (v), d a lo largo (u)
+      const pz = (list, geo, col, u, v, y, w, h, d, rx = 0) => bake(list, geo, col, wpt(u, v, y), rot, V3(w, h, d), rx);
+      {
+        const bh = B - loG + 0.12;
+        pz(solids, unitBox, '#8f8b83', BU, vb + (W - 0.25) / 2, -bh / 2, W + 0.45, bh, D + 0.2);
+      }
+      const HORM = '#a9a69f';
+      const CU = [-D / 2, -D / 6, D / 6, D / 2].map((t) => BU + t);
+      const CV = [0, W / 2, W].map((t) => vb + t);
+      // columnas, de la platea al techo
+      for (const u of CU) for (const v of CV) pz(solids, unitBox, HORM, u, v, (5 * FL) / 2, COL, 5 * FL, COL);
+      // losas: las cuatro primeras enteras; la del techo con dos tramos hormigonados y el tercero en el encofrado
+      for (let k = 1; k <= 4; k++) pz(solids, unitBox, k % 2 ? '#b1aea7' : '#aaa79f', BU, BV, k * FL - LOSA / 2, W + 0.06, LOSA, D + 0.06);
+      const u0 = BU - D / 2 - 0.03;
+      const uF = BU + D / 6; // hasta acá está hormigonado
+      const uE = BU + D / 2 + 0.03;
+      pz(solids, unitBox, '#bdbab3', (u0 + uF) / 2, BV, 5 * FL - LOSA / 2, W + 0.06, LOSA, uF - u0);
+      // el encofrado: tablero fenólico con la malla de hierros encima y las tablas de borde
+      const yE = 5 * FL - LOSA; // piso del encofrado
+      pz(solids, unitBox, '#c9965a', (uF + uE) / 2, BV, yE + 0.006, W + 0.06, 0.012, uE - uF);
+      for (let k = 0; k <= 8; k++) pz(solids, unitBox, '#4f4239', uF + 0.02 + ((uE - uF - 0.04) * k) / 8, BV, yE + 0.02, W, 0.006, 0.006);
+      for (let k = 0; k <= 6; k++) pz(solids, unitBox, '#4f4239', (uF + uE) / 2, vb + (W * k) / 6, yE + 0.026, 0.006, 0.006, uE - uF - 0.03);
+      for (const dv of [-0.035, W + 0.035]) pz(solids, unitBox, '#b07f45', (uF + uE) / 2, vb + dv, yE + 0.03, 0.012, LOSA + 0.02, uE - uF);
+      pz(solids, unitBox, '#b07f45', uE, BV, yE + 0.03, W + 0.08, LOSA + 0.02, 0.012);
+      // puntales rojos bajo la losa del techo, recién hormigonada
+      for (let a = 0; a < 9; a++) {
+        for (let b = 0; b < 5; b++) {
+          const u = BU - D / 2 + 0.12 + (a * (D - 0.24)) / 8;
+          const v = vb + 0.12 + (b * (W - 0.24)) / 4;
+          pz(solids, unitBox, '#c23b22', u, v, 4 * FL + (FL - LOSA) / 2, 0.013, FL - LOSA, 0.013);
+        }
+      }
+      // los hierros de arranque que asoman sobre cada columna
+      for (const u of CU) for (const v of CV) for (const [a, b] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) pz(solids, unitBox, '#4f4239', u + a * 0.022, v + b * 0.022, 5 * FL + 0.09, 0.008, 0.18, 0.008);
+      // núcleo de la escalera y el ascensor, al fondo, más alto que el resto
+      pz(solids, unitBox, '#9b988f', BU, vb + W - 0.2, (5 * FL + 0.26) / 2, 0.3, 5 * FL + 0.26, 0.36);
+
+      // ----- paredes: abajo revocadas, en el medio el ladrillo hueco, arriba a medio levantar -----
+      const ESP = 0.04;
+      const LAD = ['#b5532f', '#a94a2a', '#bf5d36'];
+      const caras = {
+        frente: { alongU: true, at: (t) => [t, vb], ts: CU },
+        fondo: { alongU: true, at: (t) => [t, vb + W], ts: CU },
+        izq: { alongU: false, at: (t) => [BU - D / 2, t], ts: CV },
+        der: { alongU: false, at: (t) => [BU + D / 2, t], ts: CV },
+      };
+      // un paño entre dos columnas; alto < 1 lo corta a medio levantar (sin ventana)
+      const pano = (cara, i, piso, col, { ventana = true, puerta = false, alto = 1 } = {}) => {
+        const t0 = cara.ts[i];
+        const t1 = cara.ts[i + 1];
+        const y0 = piso * FL;
+        const H = (FL - LOSA) * alto;
+        const largo = t1 - t0 - COL;
+        const put = (t, y, len, hh) => {
+          const [u, v] = cara.at(t);
+          if (cara.alongU) pz(solids, unitBox, col, u, v, y + hh / 2, ESP, hh, len);
+          else pz(solids, unitBox, col, u, v, y + hh / 2, len, hh, ESP);
+        };
+        if (!ventana || alto < 1) return put((t0 + t1) / 2, y0, largo, H);
+        const sill = puerta ? 0 : 0.1;
+        const lint = 0.07;
+        const vw = largo * (puerta ? 0.42 : 0.5);
+        const lado = (largo - vw) / 2;
+        if (sill) put((t0 + t1) / 2, y0, largo, sill);
+        put((t0 + t1) / 2, y0 + H - lint, largo, lint);
+        put(t0 + COL / 2 + lado / 2, y0 + sill, lado, H - sill - lint);
+        put(t1 - COL / 2 - lado / 2, y0 + sill, lado, H - sill - lint);
+      };
+      let nl = 0;
+      const lad = () => LAD[nl++ % LAD.length];
+      for (const [nombre, cara] of Object.entries(caras)) {
+        for (let i = 0; i < cara.ts.length - 1; i++) {
+          pano(cara, i, 0, '#d9d4c9', { puerta: nombre === 'frente' && i === 1 }); // planta baja revocada
+          pano(cara, i, 1, lad());
+          pano(cara, i, 2, lad());
+        }
+      }
+      // tercer piso: el fondo y un costado cerrados, el frente y el otro costado a medio levantar
+      for (let i = 0; i < 3; i++) pano(caras.fondo, i, 3, lad());
+      for (let i = 0; i < 2; i++) pano(caras.izq, i, 3, lad());
+      pano(caras.frente, 0, 3, lad());
+      pano(caras.frente, 1, 3, lad(), { alto: 0.4 });
+      pano(caras.der, 0, 3, lad(), { alto: 0.65 });
+      // ladrillos apilados junto a la pared que se está levantando
+      for (const [du, dv, dy] of [[0.12, 0.2, 0], [0.12, 0.2, 0.045], [0.24, 0.2, 0]]) pz(solids, unitBox, lad(), BU + du, vb + dv, 3 * FL + 0.022 + dy, 0.08, 0.045, 0.1);
+      pz(solids, unitBox, '#8e8a83', BU - 0.2, vb + 0.25, 3 * FL + 0.035, 0.1, 0.07, 0.1); // balde de mezcla
+
+      // ----- andamio en el frente, hasta el cuarto piso -----
+      {
+        const vi = vb - 0.08; // línea de adentro
+        const vo = vb - 0.26; // línea de afuera
+        const vp = (vi + vo) / 2; // tablones
+        const TUBO = '#9aa1a8';
+        const n = 4;
+        const us = Array.from({ length: n + 1 }, (_, k) => BU - D / 2 - 0.06 + ((D + 0.12) * k) / n);
+        const Htop = 4 * FL + 0.18;
+        for (const u of us) {
+          for (const v of [vi, vo]) rod(solids, TUBO, wpt(u, v, 0), wpt(u, v, Htop), 0.014);
+          for (let k = 1; k <= 4; k++) rod(solids, TUBO, wpt(u, vi, k * FL - 0.012), wpt(u, vo, k * FL - 0.012), 0.012);
+        }
+        for (let k = 1; k <= 4; k++) {
+          for (const v of [vi, vo]) rod(solids, TUBO, wpt(us[0], v, k * FL - 0.012), wpt(us[n], v, k * FL - 0.012), 0.012);
+          rod(solids, TUBO, wpt(us[0], vo, k * FL + 0.16), wpt(us[n], vo, k * FL + 0.16), 0.01); // baranda
+          pz(solids, unitBox, k % 2 ? '#a87b4a' : '#b98a55', (us[0] + us[n]) / 2, vp, k * FL, 0.17, 0.012, D + 0.12);
+          // cruces de San Andrés en la cara de afuera
+          for (let b = 0; b < n; b++) {
+            const [ua, ub] = (b + k) % 2 ? [us[b], us[b + 1]] : [us[b + 1], us[b]];
+            rod(solids, TUBO, wpt(ua, vo, (k - 1) * FL), wpt(ub, vo, k * FL - 0.012), 0.008);
+          }
+        }
+        // media sombra verde en las dos últimas bahías de arriba
+        pz(solids, unitBox, '#2e7a4c', (us[2] + us[4]) / 2, vo - 0.012, 3 * FL + (FL + 0.18) / 2, 0.006, FL + 0.18, us[4] - us[2]);
+      }
+
+      // ----- la grúa torre: el mástil fijo y la cabeza que gira -----
+      const GU = BU - D / 2 - 0.55;
+      const GV = BV;
+      const gc = at(GU, GV);
+      const gG = groundAt(gc.x, gc.z);
+      const HJ = B + 5 * FL + 0.9; // altura de la pluma
+      piece(solids, unitBox, '#8f8b83', GU, GV, 0.04, 0.36, 0.12, 0.36, 0, gG);
+      {
+        const M = 0.07;
+        const cp = (a, b, y) => {
+          const c = at(GU + a, GV + b);
+          c.y = y;
+          return c;
+        };
+        const esq = [[-M, -M], [M, -M], [M, M], [-M, M]];
+        const ya = gG + 0.1;
+        const yb = HJ - 0.07;
+        for (const [a, b] of esq) rod(solids, AMARILLO, cp(a, b, ya), cp(a, b, yb), 0.018);
+        const nSeg = Math.round((yb - ya) / 0.16);
+        const sh = (yb - ya) / nSeg;
+        for (let s = 0; s <= nSeg; s++) {
+          const y0 = ya + s * sh;
+          for (let c = 0; c < 4; c++) {
+            const [a0, b0] = esq[c];
+            const [a1, b1] = esq[(c + 1) % 4];
+            rod(solids, AMARILLO, cp(a0, b0, y0), cp(a1, b1, y0), 0.01);
+            if (s < nSeg) rod(solids, AMARILLO, cp(...(s % 2 ? esq[c] : esq[(c + 1) % 4]), y0), cp(...(s % 2 ? esq[(c + 1) % 4] : esq[c]), y0 + sh), 0.008);
+          }
+        }
+      }
+      // la cabeza, en coordenadas propias: x a lo largo de la pluma, y hacia arriba
+      const cabeza = new THREE.Group();
+      cabeza.position.set(gc.x, HJ, gc.z);
+      {
+        const hs = [];
+        const lp = (col, x, y, z, w, h, d) => bake(hs, unitBox, col, V3(x, y, z), 0, V3(w, h, d));
+        const lr = (col, a, b, t) => rod(hs, col, V3(...a), V3(...b), t);
+        lp('#d9a404', 0, -0.035, 0, 0.2, 0.07, 0.2); // corona de giro
+        lp('#ecebe4', 0.07, -0.1, 0.14, 0.13, 0.12, 0.11); // cabina del gruista
+        lp('#7fb6dc', 0.137, -0.09, 0.14, 0.004, 0.07, 0.09);
+        // pluma: reticulado de sección triangular
+        const JL = 2.3;
+        for (const z of [-0.045, 0.045]) lr(AMARILLO, [0.08, 0, z], [JL, 0, z], 0.014);
+        lr(AMARILLO, [0.08, 0.1, 0], [JL, 0.1, 0], 0.014);
+        for (let x = 0.08; x < JL - 0.01; x += 0.15) {
+          const x2 = Math.min(x + 0.15, JL);
+          const xm = (x + x2) / 2;
+          lr(AMARILLO, [x, 0, -0.045], [x, 0, 0.045], 0.008);
+          for (const z of [-0.045, 0.045]) {
+            lr(AMARILLO, [x, 0, z], [xm, 0.1, 0], 0.008);
+            lr(AMARILLO, [xm, 0.1, 0], [x2, 0, z], 0.008);
+          }
+        }
+        lp(AMARILLO, JL, 0.05, 0, 0.03, 0.12, 0.11); // punta
+        // contrapluma con la pasarela y los contrapesos de hormigón
+        for (const z of [-0.06, 0.06]) lr(AMARILLO, [-0.08, 0, z], [-0.9, 0, z], 0.016);
+        lp('#8e9196', -0.5, 0.004, 0, 0.82, 0.01, 0.12);
+        for (let k = 0; k < 3; k++) lp('#8f8c86', -0.66 - k * 0.075, -0.08, 0, 0.068, 0.17, 0.16);
+        // la torreta y los tensores
+        for (const z of [-0.06, 0.06]) lr(AMARILLO, [0, 0, z], [0, 0.5, 0], 0.016);
+        lr('#3b3b3b', [0, 0.5, 0], [1.45, 0.1, 0], 0.007);
+        lr('#3b3b3b', [0, 0.5, 0], [-0.88, 0.01, 0], 0.007);
+        // el cartel en la contrapluma, con el color del proyecto
+        for (const z of [-0.07, 0.07]) lp(p.color, -0.5, -0.04, z, 0.6, 0.06, 0.006);
+        cabeza.add(new THREE.Mesh(mergeGeometries(hs), new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true })));
+      }
+      const lam = (c) => new THREE.MeshLambertMaterial({ color: c, flatShading: true });
+      const carro = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.035, 0.1), lam('#3d4146'));
+      const cable = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), lam('#1e1e1e'));
+      const gancho = new THREE.Group();
+      {
+        const hk = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.03, 0.025), lam('#e8692e'));
+        hk.position.y = 0.15;
+        gancho.add(hk);
+      }
+      // la carga: un pallet de ladrillos colgado de las eslingas
+      const carga = new THREE.Group();
+      {
+        const pal = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.025, 0.2), lam('#8a6a44'));
+        pal.position.y = 0.0125;
+        const lad2 = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.1, 0.17), lam('#b5532f'));
+        lad2.position.y = 0.075;
+        carga.add(pal, lad2);
+        for (const [a, b] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+          const e = new THREE.Mesh(new THREE.BoxGeometry(0.004, 0.06, 0.004), lam('#2b2b2b'));
+          e.position.set(a * 0.045, 0.145, b * 0.045);
+          e.rotation.set(b * 0.6, 0, -a * 0.6);
+          carga.add(e);
+        }
+        gancho.add(carga);
+      }
+      cabeza.add(carro, cable, gancho);
+      root.add(cabeza);
+      blinkers.push({ pos: new THREE.Vector3(gc.x, HJ + 0.55, gc.z), color: '#ff3b30', phase: i * 0.37, size: 0.6 });
+      // de dónde levanta (la pila de pallets) y dónde baja (la losa del techo)
+      const PA = [-1.55, Y0 + 0.65];
+      const PB = [BU - 0.5, vb + 0.4];
+      {
+        const qa = at(...PA);
+        const qb = at(...PB);
+        const ang = (q) => Math.atan2(-(q.z - gc.z), q.x - gc.x);
+        const thA = ang(qa);
+        let dTh = ang(qb) - thA;
+        dTh = Math.atan2(Math.sin(dTh), Math.cos(dTh));
+        gruas.push({
+          cabeza,
+          carro,
+          cable,
+          gancho,
+          carga,
+          HJ,
+          thA,
+          dTh,
+          rA: Math.hypot(qa.x - gc.x, qa.z - gc.z),
+          rB: Math.hypot(qb.x - gc.x, qb.z - gc.z),
+          yA: groundAt(qa.x, qa.z) + 0.2,
+          yB: B + 5 * FL + 0.005,
+          hi: B + 5 * FL + 0.42,
+          phase: 0,
+        });
+      }
+
+      // ----- materiales: pallets de ladrillos, arena, piedra, hierros y la carretilla -----
+      for (const [u, v] of [PA, [-1.9, Y0 + 0.65], [-1.55, Y0 + 0.98], [-1.9, Y0 + 0.98]]) {
+        const q = at(u, v);
+        const gq = groundAt(q.x, q.z);
+        piece(solids, unitBox, '#8a6a44', u, v, 0.03, 0.24, 0.03, 0.24, 0, gq);
+        piece(solids, unitBox, lad(), u, v, 0.11, 0.2, 0.14, 0.2, 0, gq);
+      }
+      for (const [u, v, col, s] of [[-1.85, Y0 + 1.55, '#d6b98a', 0.55], [-1.9, Y0 + 2.2, '#8d8a84', 0.45]]) {
+        const q = at(u, v);
+        piece(solids, unitCone, col, u, v, s * 0.24, s, s * 0.48, s, 0, groundAt(q.x, q.z));
+      }
+      {
+        const q = at(-0.6, Y0 + 0.3);
+        const gq = groundAt(q.x, q.z);
+        for (let k = 0; k < 6; k++) piece(solids, unitBox, '#4f4239', -0.6, Y0 + 0.27 + (k % 3) * 0.022, 0.025 + Math.floor(k / 3) * 0.02, 0.014, 0.014, 1.2, 0, gq);
+        // tablones
+        const q2 = at(2.0, Y0 + 0.6);
+        const g2 = groundAt(q2.x, q2.z);
+        for (let k = 0; k < 4; k++) piece(solids, unitBox, k % 2 ? '#a87b4a' : '#b98a55', 2.0, Y0 + 0.6, 0.015 + k * 0.025, 0.5, 0.022, 0.16, 0, g2);
+        // carretilla junto a la arena
+        const cu = -1.35;
+        const cv2 = Y0 + 1.35;
+        const q3 = at(cu, cv2);
+        const g3 = groundAt(q3.x, q3.z);
+        piece(solids, unitBox, '#2f6fa8', cu, cv2, 0.09, 0.12, 0.05, 0.16, 0, g3);
+        piece(solids, unitBox, '#1b1b1b', cu, cv2, 0.035, 0.02, 0.07, 0.07, 0, g3);
+        for (const dv of [-0.05, 0.05]) piece(solids, unitBox, '#5a5e64', cu - 0.13, cv2 + dv, 0.07, 0.01, 0.01, 0.14, 0, g3);
+      }
+
+      // ----- el trompito, con la arena al lado -----
+      const TU = 0.55;
+      const TV = vb - 0.55;
+      {
+        const q = at(TU, TV);
+        const gt = groundAt(q.x, q.z);
+        piece(solids, unitBox, '#c23b22', TU, TV, 0.07, 0.16, 0.12, 0.04, 0, gt);
+        for (const dv of [-0.08, 0.08]) piece(solids, unitBox, '#1b1b1b', TU - 0.02, TV + dv, 0.04, 0.02, 0.08, 0.08, 0, gt);
+        const c = at(TU + 0.02, TV);
+        c.y = gt + 0.19;
+        bake(solids, potGeo, '#e8692e', c, rot, V3(0.15, 0.15, 0.15), 0.7);
+      }
+
+      // ----- el mixer, entrando por el portón, con el tambor girando -----
+      const MU = 0.95;
+      const MV = Y0 + 0.55;
+      {
+        const q = at(MU, MV);
+        const gm = groundAt(q.x, q.z);
+        piece(solids, unitBox, '#2b2b2b', MU, MV, 0.1, 0.2, 0.04, 0.95, 0, gm); // chasis
+        piece(solids, unitBox, '#f4f4f2', MU + 0.38, MV, 0.2, 0.22, 0.2, 0.2, 0, gm); // cabina
+        piece(glows, unitBox, '#9fd3ff', MU + 0.481, MV, 0.24, 0.18, 0.07, 0.01, 0, gm); // parabrisas
+        for (const u of [MU + 0.36, MU - 0.08, MU - 0.3]) for (const dv of [-0.1, 0.1]) piece(solids, unitBox, '#1b1b1b', u, MV + dv, 0.06, 0.05, 0.12, 0.12, 0, gm);
+        piece(solids, unitBox, '#5a5e64', MU + 0.12, MV, 0.17, 0.16, 0.1, 0.05, 0, gm); // apoyo del tambor
+        rod(solids, '#5a5e64', V3(at(MU - 0.4, MV).x, gm + 0.3, at(MU - 0.4, MV).z), V3(at(MU - 0.58, MV).x, gm + 0.18, at(MU - 0.58, MV).z), 0.04); // canaleta
+        const dg = new THREE.Group();
+        const dc = at(MU - 0.12, MV);
+        dg.position.set(dc.x, gm + 0.28, dc.z);
+        dg.rotation.set(0.22, rot, 0, 'YXZ'); // la boca de atrás, más alta
+        const drum = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.075, 0.48, 10).rotateX(Math.PI / 2), lam(p.color));
+        for (const a of [0, Math.PI]) {
+          const st = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, 0.42), lam('#f4f4f2'));
+          st.position.set(Math.cos(a) * 0.095, Math.sin(a) * 0.095, 0);
+          drum.add(st);
+        }
+        dg.add(drum);
+        root.add(dg);
+        tambores.push(drum);
+      }
+
+      // ----- el obrador (un contenedor), el baño químico y la mesa con los planos -----
+      {
+        const OU = 1.95;
+        const OV = Y0 + 1.7;
+        const q = at(OU, OV);
+        const go = groundAt(q.x, q.z);
+        piece(solids, unitBox, '#3d6f8e', OU, OV, 0.2, 0.9, 0.38, 0.42, 0, go);
+        piece(solids, unitBox, '#335f7a', OU, OV, 0.4, 0.92, 0.025, 0.44, 0, go);
+        piece(solids, unitBox, '#24292f', OU - 0.212, OV - 0.2, 0.15, 0.13, 0.26, 0.01, 0, go); // puerta
+        piece(glows, unitBox, '#ffe2b0', OU - 0.212, OV + 0.18, 0.22, 0.2, 0.1, 0.01, 0, go); // ventana
+        const qb = at(OU, Y0 + 2.6);
+        piece(solids, unitBox, '#2a64b8', OU, Y0 + 2.6, 0.16, 0.17, 0.32, 0.17, 0, groundAt(qb.x, qb.z));
+        piece(solids, unitBox, '#e9ecef', OU, Y0 + 2.6, 0.33, 0.18, 0.02, 0.18, 0, groundAt(qb.x, qb.z));
+        // mesa de caballetes con el plano azul
+        const mu = 1.5;
+        const mv = Y0 + 1.2;
+        const qm = at(mu, mv);
+        const gm = groundAt(qm.x, qm.z);
+        for (const du of [-0.11, 0.11]) piece(solids, unitBox, '#7a5434', mu + du, mv, 0.065, 0.16, 0.13, 0.02, 0, gm);
+        piece(solids, unitBox, '#c9965a', mu, mv, 0.135, 0.2, 0.015, 0.32, 0, gm);
+        piece(solids, unitBox, '#2f5f9e', mu, mv, 0.145, 0.15, 0.004, 0.24, 0, gm);
+        persona(mu, mv - 0.17, { ropa: '#e9e9e9', casco: '#f4f4f2', giro: -Math.PI / 2 }); // el capataz
+        persona(mu + 0.2, mv + 0.15, { ropa: '#2f3a4a', casco: '#f4f4f2', giro: Math.PI * 0.85 }); // la arquitecta
+      }
+
+      // ----- el cerco de media sombra, con el portón abierto -----
+      const cerco = (u, v, alongU) => {
+        if (!buildable(u, v)) return;
+        const q = at(u, v);
+        const gq = groundAt(q.x, q.z);
+        piece(solids, unitBox, '#2f5e3e', u, v, 0.13, alongU ? 0.012 : 0.5, 0.24, alongU ? 0.5 : 0.012, 0, gq);
+        const [pu, pv] = alongU ? [u - 0.25, v] : [u, v - 0.25];
+        piece(solids, unitBox, '#7b8087', pu, pv, 0.14, 0.025, 0.28, 0.025, 0, gq);
+      };
+      for (let u = UA + 0.25; u < UB; u += 0.5) {
+        if (u < 0.3 || u > 1.7) cerco(u, Y0, true);
+        cerco(u, Y1, true);
+      }
+      for (let v = Y0 + 0.25; v < Y1; v += 0.5) {
+        cerco(UA, v, false);
+        cerco(UB, v, false);
+      }
+
+      // ----- cartel de obra, mirando a la ruta -----
+      {
+        const cu = -1.15;
+        const cv2 = Y0 - 0.1;
+        const q = at(cu, cv2);
+        const g0 = groundAt(q.x, q.z);
+        for (const du of [-0.5, 0.5]) piece(solids, unitBox, '#6b4a2e', cu + du, cv2, 0.48, 0.04, 0.96, 0.04, 0, g0);
+        piece(solids, unitBox, '#2b2f36', cu, cv2, 0.66, 0.03, 0.62, 1.14, 0, g0);
+        const tex = canvasTexture(768, 416, drawObraSign);
+        textures.push(tex);
+        signs.push(() => tex.userData.redraw(p, lang));
+        textPlane(tex, new THREE.Vector3(q.x, g0 + 0.66, q.z), side.clone().negate(), 1.1, 0.596, false, 0.018);
+      }
+
+      // ----- los obreros -----
+      const AMA = '#f2c230';
+      const NAR = '#ff7a1a';
+      const obrero = (casco, camisa = '#3a7bd5', chaleco = NAR) => ({ camisa, chaleco, pantalon: '#3a4a63', botas: '#3b2a1a', casco, pelo: '#2a1d14' });
+      // quietos: el que levanta la pared del tercero, el que ata hierros en el encofrado, el del trompito,
+      // el que guía la canaleta del mixer y uno que descansa sentado en un pallet
+      persona(BU + 0.02, vb + 0.16, { ropa: '#3a7bd5', casco: AMA, chaleco: NAR, base: B + 3 * FL, giro: Math.PI / 2 });
+      persona(BU + 0.62, vb + 0.55, { ropa: '#d6cbb4', casco: AMA, chaleco: '#c8e03a', base: B + yE + 0.012 });
+      persona(BU + 0.78, vb + 0.95, { ropa: '#e9e9e9', casco: '#3a7bd5', chaleco: NAR, base: B + yE + 0.012, giro: 2.4 });
+      persona(TU - 0.2, TV + 0.05, { ropa: '#2e9e6a', casco: AMA, chaleco: NAR, giro: 0 });
+      persona(MU - 0.68, MV + 0.14, { ropa: '#8e5bd1', casco: AMA, chaleco: '#c8e03a', giro: 0.3 });
+      persona(-1.9, Y0 + 0.98, { sentada: true, ropa: '#d64545', casco: AMA, sobre: 0.17, giro: -Math.PI / 2 });
+      // los que caminan: por la losa del techo (el que recibe la carga de la grúa), por el tercer piso,
+      // por el tablón del andamio y por el terreno, de los pallets a la puerta
+      guardaparques.push(
+        { path: [at(BU - 0.85, vb + 0.25), at(BU - 0.45, vb + 0.55)], y: B + 5 * FL, speed: 0.07, phase: 0.1, look: obrero(AMA) },
+        { path: [at(BU - 0.8, vb + 0.95), at(BU - 0.22, vb + 0.85)], y: B + 5 * FL, speed: 0.06, phase: 0.6, look: obrero('#f4f4f2', '#e9e9e9', '#c8e03a') },
+        { path: [at(BU - 0.75, vb + 0.5), at(BU + 0.7, vb + 0.5)], y: B + 3 * FL, speed: 0.08, phase: 0.3, look: obrero(AMA, '#d64545') },
+        { path: [at(BU - D / 2 + 0.05, vb - 0.17), at(BU + D / 2 - 0.05, vb - 0.17)], y: B + 2 * FL + 0.006, speed: 0.07, phase: 0.45, look: obrero(AMA, '#2e9e6a') },
+        { path: [at(-1.35, Y0 + 0.8), at(BU - 0.05, vb - 0.38)], speed: 0.09, phase: 0.2, look: obrero(AMA, '#f2c230', '#c8e03a') },
+      );
+      // algunos árboles fuera del cerco
+      for (const [u, v] of [[-3.0, Y0 + 0.5], [-3.1, Y0 + 2.2], [3.0, Y0 + 1.0], [3.1, Y0 + 2.6], [-1.2, Y1 + 0.7], [1.6, Y1 + 0.8]]) tree(u, v, 0.9 + rnd() * 0.4);
     } else if (kind === 'parque') {
       // ---------- Parque nacional: pórtico, boletería con barrera, casa del guardaparque y camping ----------
       let v0 = roadHalf + 1.5; // pórtico
@@ -1247,6 +1746,46 @@ export function buildPlaces({ projects, sites, stops, curve, roadDist, height, w
           j.arms[1].rotation.x = sw * 0.7;
         });
       }
+      // grúas: levantan un pallet de ladrillos de la pila, giran y lo bajan en la losa del techo
+      for (const g of gruas) {
+        const f = (time / 28 + g.phase) % 1;
+        const ss = (a, b, x) => {
+          const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+          return t * t * (3 - 2 * t);
+        };
+        const bump = (t) => (1 - Math.cos(Math.PI * 2 * t)) / 2; // 0 → 1 → 0
+        let k;
+        let yH; // altura del fondo de la carga
+        let cargado;
+        if (f < 0.12) {
+          k = 0;
+          yH = g.hi + (g.yA - g.hi) * bump(f / 0.12);
+          cargado = f > 0.06;
+        } else if (f < 0.45) {
+          k = ss(0.12, 0.45, f);
+          yH = g.hi;
+          cargado = true;
+        } else if (f < 0.58) {
+          k = 1;
+          yH = g.hi + (g.yB - g.hi) * bump((f - 0.45) / 0.13);
+          cargado = f < 0.515;
+        } else {
+          k = 1 - ss(0.58, 1, f);
+          yH = g.hi;
+          cargado = false;
+        }
+        g.cabeza.rotation.y = g.thA + g.dTh * k;
+        const r = g.rA + (g.rB - g.rA) * k;
+        g.carro.position.set(r, -0.03, 0);
+        const yl = yH - g.HJ; // en coordenadas de la cabeza (negativo: debajo de la pluma)
+        const top = -0.05;
+        const bot = yl + 0.15;
+        g.cable.position.set(r, (top + bot) / 2, 0);
+        g.cable.scale.set(0.006, Math.max(top - bot, 0.001), 0.006);
+        g.gancho.position.set(r, yl, 0);
+        g.carga.visible = cargado;
+      }
+      for (const t of tambores) t.rotation.z = time * 1.6;
       // van y vuelven por su recorrido, mirando hacia donde caminan y moviendo piernas y brazos
       for (const w of walkers) {
         const [a0, a1] = w.path;
@@ -1258,7 +1797,7 @@ export function buildPlaces({ projects, sites, stops, curve, roadDist, height, w
         const e = f < 0.04 ? 0 : f > 0.96 ? 1 : (f - 0.04) / 0.92;
         const x = a0.x + (a1.x - a0.x) * e;
         const z = a0.z + (a1.z - a0.z) * e;
-        w.g.position.set(x, height(x, z), z);
+        w.g.position.set(x, w.y ?? height(x, z), z); // y: los que caminan por una losa o el andamio
         const dx = (a1.x - a0.x) * (ida ? 1 : -1);
         const dz = (a1.z - a0.z) * (ida ? 1 : -1);
         w.g.rotation.y = Math.atan2(dx, dz);
