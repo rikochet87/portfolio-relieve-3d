@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { MapControls } from 'three/addons/controls/MapControls.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { buildPlaces } from './places.js';
-import { ahoraEnResistencia, direccionSol } from './sol.js';
+import { RESISTENCIA, ahoraEn, solEn } from './sol.js';
 
 const SIZE = 130; // lado del terreno en unidades (1 unidad = 100 m en el HUD)
 const SEG = 260;
@@ -351,7 +351,7 @@ export async function createTerrain({ canvas, projects, reducedMotion, lang = 'e
   const clock = new THREE.Clock();
   const uTime = { value: 0 };
   const uRise = { value: reducedMotion ? 1 : 0 };
-  // el sol: dirección y cuánto de día es (ver setHour)
+  // el sol: dirección y cuánto de día es (ver setSun)
   const uSun = { value: new THREE.Vector3(-0.72, 0.64, -0.32).normalize() };
   const uDay = { value: 1 };
 
@@ -731,14 +731,12 @@ export async function createTerrain({ canvas, projects, reducedMotion, lang = 'e
   const sunLight = new THREE.DirectionalLight(0xfff0dc, 2.2);
   sunLight.position.set(-30, 40, -30);
   scene.add(sunLight);
-  // Hora del día: el sol real sobre Resistencia, Chaco, para la hora elegida de hoy allá
-  // (src/sol.js). De noche queda una luz tenue de luna.
+  // El sol: lo calcula main.js (src/sol.js) para el lugar y la hora elegidos y lo pasa como una
+  // dirección. De noche queda una luz tenue de luna.
   const solCalido = new THREE.Color(0xffa860);
   const solAlto = new THREE.Color(0xfff0dc);
-  const hoy = ahoraEnResistencia().fecha;
-  function setHour(hour) {
-    const sp = direccionSol(hour, hoy);
-    const d = new THREE.Vector3(sp.x, sp.y, sp.z).normalize();
+  function setSun(dir) {
+    const d = new THREE.Vector3(dir.x, dir.y, dir.z).normalize();
     const day = THREE.MathUtils.smoothstep(d.y, -0.06, 0.12);
     uSun.value.copy(d);
     uDay.value = day;
@@ -750,7 +748,10 @@ export async function createTerrain({ canvas, projects, reducedMotion, lang = 'e
     if (day < 0.01) sunLight.color.set(0x9fb4ff);
     hemi.intensity = 0.45 + 0.85 * day;
   }
-  setHour(ahoraEnResistencia().hora);
+  {
+    const { fecha, hora } = ahoraEn(RESISTENCIA);
+    setSun(solEn(RESISTENCIA, fecha, hora));
+  }
 
   // ---------- Vegetación y rocas (instanciadas) ----------
   function part(geo, color, y, sx = 1, sy = 1, sz = 1) {
@@ -1491,7 +1492,7 @@ export async function createTerrain({ canvas, projects, reducedMotion, lang = 'e
 
   return {
     setLang: (l) => places.setLang(l),
-    setHour,
+    setSun,
     focus,
     unfocus,
     setFilter,

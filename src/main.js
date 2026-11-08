@@ -1,7 +1,7 @@
 import './style.css';
 import './relieve.css';
 import { PROJECTS, CATEGORIES } from './data/projects.js';
-import { ahoraEnResistencia, saleYSePone, hhmm } from './sol.js';
+import { RESISTENCIA, lugarDelVisitante, ahoraEn, solEn, saleYSePone, hhmm } from './sol.js';
 
 const UI = {
   es: {
@@ -21,7 +21,8 @@ const UI = {
     prev: 'Anterior',
     next: 'Siguiente',
     choose: '¿Cuál querés ver?',
-    'sol.label': 'Hora en Resistencia',
+    'sol.label': 'Hora en',
+    'sol.cambiar': 'Cambiar a',
     'sol.now': 'Ahora',
   },
   en: {
@@ -41,7 +42,8 @@ const UI = {
     prev: 'Previous',
     next: 'Next',
     choose: 'Which one?',
-    'sol.label': 'Time in Resistencia',
+    'sol.label': 'Time in',
+    'sol.cambiar': 'Switch to',
     'sol.now': 'Now',
   },
 };
@@ -483,37 +485,60 @@ function fromHash() {
 window.addEventListener('hashchange', fromHash);
 
 // ---------- Hora del día ----------
-// La hora es la de Resistencia (UTC−3), hoy allá, y el sol es el de verdad sobre la ciudad
-// (src/sol.js): desde cualquier parte del mundo se ve la misma luz. Arranca en la hora actual.
+// El sol de verdad, en la zona del visitante (la hora de su reloj y la ciudad que da nombre a su
+// zona horaria, sin pedir permiso de ubicación) o en Resistencia, con un toque en el nombre.
+// El deslizador elige una hora de hoy en ese lugar (src/sol.js). Arranca en la hora actual.
 const solUI = (() => {
   const range = $('#sol-range');
   const label = $('#sol-hora');
-  const set = (h) => {
-    range.value = String(Math.round(h * 4) / 4);
-    show();
+  const boton = $('#sol-lugar');
+  const visitante = lugarDelVisitante();
+  let lugar = visitante || RESISTENCIA;
+  const otro = () => (lugar === RESISTENCIA ? visitante : RESISTENCIA);
+  const aplicar = () => {
+    const { fecha } = ahoraEn(lugar);
+    galaxy?.setSun?.(solEn(lugar, fecha, Number(range.value)));
   };
   const show = () => {
     label.textContent = hhmm(Number(range.value));
-    const { sale, pone } = saleYSePone(ahoraEnResistencia().fecha);
+    boton.querySelector('.sol__largo').textContent = lugar.nombre;
+    boton.querySelector('.sol__corto').textContent = lugar.corto;
+    const alt = otro();
+    boton.disabled = !alt;
+    if (alt) boton.title = `${t('sol.cambiar')} ${alt.nombre}`;
+    range.setAttribute('aria-label', `${t('sol.label')} ${lugar.nombre}`);
+    const { sale, pone } = saleYSePone(lugar, ahoraEn(lugar).fecha);
+    const pie = $('#sol-dia');
     if (sale !== null && pone !== null) {
       // el riel: noche azul, amanecer y atardecer naranjas, mediodía amarillo, en sus horas de hoy
       const pc = (h) => `${((h / 23.75) * 100).toFixed(1)}%`;
       const mid = (sale + pone) / 2;
       range.style.background = `linear-gradient(90deg, #22325a 0%, #22325a ${pc(sale - 0.5)}, #e88a3c ${pc(sale + 0.6)}, #ffd77a ${pc(mid)}, #e88a3c ${pc(pone - 0.6)}, #22325a ${pc(pone + 0.5)}, #22325a 100%)`;
+      pie.textContent = `${lang === 'es' ? 'Sol' : 'Sun'} ${hhmm(sale)}–${hhmm(pone)}`;
+    } else {
+      range.style.background = '';
+      pie.textContent = '';
     }
-    if (sale !== null && pone !== null) $('#sol-dia').textContent = `${lang === 'es' ? 'Sol' : 'Sun'} ${hhmm(sale)}–${hhmm(pone)}`;
+  };
+  const irAhora = () => {
+    range.value = String(Math.round(ahoraEn(lugar).hora * 4) / 4);
+    show();
+    aplicar();
   };
   range.addEventListener('input', () => {
     show();
-    galaxy?.setHour?.(Number(range.value));
+    aplicar();
   });
-  $('#sol-ahora').addEventListener('click', () => {
-    const h = ahoraEnResistencia().hora;
-    set(h);
-    galaxy?.setHour?.(h);
+  $('#sol-ahora').addEventListener('click', irAhora);
+  // cambiar de lugar: la hora pasa a la actual del otro lugar
+  boton.addEventListener('click', () => {
+    const alt = otro();
+    if (!alt) return;
+    lugar = alt;
+    irAhora();
   });
-  set(ahoraEnResistencia().hora);
-  return { show };
+  irAhora();
+  return { show, aplicar };
 })();
 
 // ---------- Arranque ----------
@@ -548,6 +573,7 @@ async function start() {
       onHover,
       onFrame,
     });
+    solUI.aplicar();
   } catch (err) {
     console.error(err);
     document.body.classList.add('no-webgl');
